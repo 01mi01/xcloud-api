@@ -78,14 +78,17 @@ Invoke-WebRequest -Uri "http://localhost:3000/v1/auth/register" -Method POST -Co
 
 ### Test 2 — Login and save JWT token
 
+**Step 1 — Login:**
 ```powershell
 $response = Invoke-WebRequest -Uri "http://localhost:3000/v1/auth/login" -Method POST -ContentType "application/json" -Body '{"email":"test1@test.com","password":"Test1234!"}' -UseBasicParsing
+```
+
+**Step 2 — Save the token:**
+```powershell
 $token = ($response.Content | ConvertFrom-Json).token
 ```
 
-**Expected response — 200 OK:**
-
-> The token is automatically saved in `$token` for Test 3.
+> The token is saved in `$token` for Test 3.
 
 ### Test 3 — Access protected endpoint using JWT
 
