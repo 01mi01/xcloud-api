@@ -22,15 +22,9 @@ const verifyToken = async (req, res, next) => {
     const token = authHeader.split(" ")[1];
 
     try {
-        // Local dev: verify with JWT_SECRET
         const payload = jwt.verify(token, JWT_SECRET);
         req.user = payload;
         next();
-
-        // Cognito (disabled):
-        // const payload = await verifier.verify(token);
-        // req.user = payload;
-        // next();
     } catch (err) {
         return res.status(401).json({ message: "Token is invalid or expired" });
     }

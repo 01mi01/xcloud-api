@@ -1,62 +1,94 @@
-const {
-  CognitoIdentityProviderClient,
-  SignUpCommand,
-  InitiateAuthCommand,
-  AdminAddUserToGroupCommand,
-} = require("@aws-sdk/client-cognito-identity-provider");
-const crypto = require("crypto");
+/**
+ * LOCAL DEV MODE — Cognito is disabled to avoid AWS costs during development.
+ * To re-enable Cognito, uncomment the Cognito block and comment out the local block.
+ *
+ * What changes when switching back to Cognito:
+ *  - registerUser  → SignUpCommand + AdminAddUserToGroupCommand
+ *  - loginUser     → InitiateAuthCommand (returns AccessToken, IdToken, ExpiresIn)
+ *  - assignUserToGroup → AdminAddUserToGroupCommand
+ *  - auth middleware → CognitoJwtVerifier instead of jwt.verify
+ */
 
-const client = new CognitoIdentityProviderClient({
-  region: process.env.AWS_REGION,
-});
+// ── Cognito (disabled) ────────────────────────────────────────────────────────
+// const {
+//   CognitoIdentityProviderClient,
+//   SignUpCommand,
+//   InitiateAuthCommand,
+//   AdminAddUserToGroupCommand,
+// } = require("@aws-sdk/client-cognito-identity-provider");
+// const crypto = require("crypto");
+// const client = new CognitoIdentityProviderClient({ region: process.env.AWS_REGION });
+// const computeSecretHash = (username) =>
+//   crypto.createHmac("SHA256", process.env.COGNITO_CLIENT_SECRET)
+//         .update(username + process.env.COGNITO_CLIENT_ID).digest("base64");
+// ─────────────────────────────────────────────────────────────────────────────
 
-// Compute Cognito secret hash required when app client has a secret
-const computeSecretHash = (username) => {
-  return crypto
-    .createHmac("SHA256", process.env.COGNITO_CLIENT_SECRET)
-    .update(username + process.env.COGNITO_CLIENT_ID)
-    .digest("base64");
-};
+// ── Local dev ─────────────────────────────────────────────────────────────────
+const { v4: uuidv4 } = require("uuid");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const pool = require("./db");
 
-// Register a new user in Cognito User Pool
+const SALT_ROUNDS = 10;
+const JWT_SECRET  = process.env.JWT_SECRET || "xcloud-local-dev-secret";
+const JWT_EXPIRES = "8h";
+
 const registerUser = async (handle, email, password) => {
-  const command = new SignUpCommand({
-    ClientId: process.env.COGNITO_CLIENT_ID,
-    SecretHash: computeSecretHash(email),
-    Username: email,
-    Password: password,
-    UserAttributes: [
-      { Name: "email", Value: email },
-      { Name: "preferred_username", Value: handle },
-    ],
-  });
-  const result = await client.send(command);
-  return result.UserSub; // returns the userId (UUID) from Cognito
+    const existing = await pool.query("SELECT user_id FROM auth_users WHERE email = $1", [email]);
+    if (existing.rows.length > 0) {
+        const err = new Error("Email already registered");
+        err.name = "UsernameExistsException";
+        throw err;
+    }
+
+    const userId       = uuidv4();
+    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+
+    await pool.query(
+        "INSERT INTO auth_users (user_id, handle, email, password_hash, role) VALUES ($1, $2, $3, $4, $5)",
+        [userId, handle, email, passwordHash, "user"]
+    );
+
+    return userId;
 };
 
-// Assign a role (group) to a user in Cognito
-const assignUserToGroup = async (email, group) => {
-  const command = new AdminAddUserToGroupCommand({
-    UserPoolId: process.env.COGNITO_USER_POOL_ID,
-    Username: email,
-    GroupName: group,
-  });
-  await client.send(command);
-};
-
-// Authenticate user and return JWT tokens from Cognito
 const loginUser = async (email, password) => {
-  const command = new InitiateAuthCommand({
-    AuthFlow: "USER_PASSWORD_AUTH",
-    ClientId: process.env.COGNITO_CLIENT_ID,
-    AuthParameters: {
-      USERNAME: email,
-      PASSWORD: password,
-      SECRET_HASH: computeSecretHash(email),
-    },
-  });
-  const result = await client.send(command);
-  return result.AuthenticationResult;
+    const { rows } = await pool.query(
+        "SELECT user_id, handle, email, password_hash, role FROM auth_users WHERE email = $1",
+        [email]
+    );
+
+    if (rows.length === 0) {
+        const err = new Error("Invalid credentials");
+        err.name = "NotAuthorizedException";
+        throw err;
+    }
+
+    const user  = rows[0];
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) {
+        const err = new Error("Invalid credentials");
+        err.name = "NotAuthorizedException";
+        throw err;
+    }
+
+    const payload = {
+        sub:                user.user_id,
+        email:              user.email,
+        username:           user.handle,
+        "cognito:groups":   [user.role],
+    };
+
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+
+    return {
+        AccessToken: token,
+        IdToken:     token,
+        ExpiresIn:   8 * 60 * 60,
+    };
 };
+
+// No-op in local mode — role is stored in auth_users table
+const assignUserToGroup = async (_email, _group) => {};
 
 module.exports = { registerUser, loginUser, assignUserToGroup };
