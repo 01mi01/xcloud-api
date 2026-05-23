@@ -26,23 +26,4 @@ CREATE TABLE IF NOT EXISTS follows (
     PRIMARY KEY (follower_id, following_id)
 );
 
-CREATE TABLE IF NOT EXISTS tweets (
-    tweet_id         UUID PRIMARY KEY,
-    author_id        UUID NOT NULL,
-    content          VARCHAR(280) NOT NULL,
-    media_urls       TEXT[]       NOT NULL DEFAULT '{}',
-    reply_to_tweet_id UUID,
-    likes_count      INTEGER      NOT NULL DEFAULT 0,
-    retweet_count    INTEGER      NOT NULL DEFAULT 0,
-    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_tweets_author_id ON tweets(author_id);
-CREATE INDEX IF NOT EXISTS idx_tweets_created_at ON tweets(created_at DESC);
-
-CREATE TABLE IF NOT EXISTS likes (
-    user_id    UUID NOT NULL,
-    tweet_id   UUID NOT NULL REFERENCES tweets(tweet_id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (user_id, tweet_id)
-);
+-- tweets and likes live in Cassandra (see db/cassandra-init.cql)

@@ -1,12 +1,10 @@
 require("dotenv").config({ path: require("path").resolve(__dirname, "../../../../.env") });
-const { Pool } = require("pg");
+const cassandra = require("cassandra-driver");
 
-const pool = new Pool({
-    host:     process.env.DB_HOST     || "localhost",
-    port:     parseInt(process.env.DB_PORT) || 5432,
-    database: process.env.DB_NAME     || "xcloud",
-    user:     process.env.DB_USER     || "postgres",
-    password: process.env.DB_PASSWORD || "postgres",
+const client = new cassandra.Client({
+    contactPoints: (process.env.CASSANDRA_CONTACT_POINTS || "localhost").split(","),
+    localDataCenter: process.env.CASSANDRA_DC || "datacenter1",
+    keyspace: process.env.CASSANDRA_KEYSPACE || "xcloud",
 });
 
-module.exports = pool;
+module.exports = client;

@@ -13,5 +13,34 @@ services:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
     restart: unless-stopped
 
+  cassandra:
+    image: cassandra:4.1
+    container_name: xcloud-cassandra
+    environment:
+      CASSANDRA_CLUSTER_NAME: xcloud-cluster
+    ports:
+      - "9042:9042"
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  cassandra-init:
+    image: cassandra:4.1
+    container_name: xcloud-cassandra-init
+    depends_on:
+      cassandra:
+        condition: service_healthy
+    volumes:
+      - ./db/cassandra-init.cql:/cassandra-init.cql
+    command: cqlsh cassandra -f /cassandra-init.cql
+    restart: on-failure
+
 volumes:
   postgres_data:
+  cassandra_data:
