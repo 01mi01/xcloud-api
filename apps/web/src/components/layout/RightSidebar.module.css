@@ -1,0 +1,184 @@
+.sidebar {
+  width: var(--sidebar-right-width);
+  flex-shrink: 0;
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+/* Search */
+.searchWrapper {
+  position: relative;
+  width: 100%;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 12px 16px 12px 44px;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  outline: none;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.searchInput:focus {
+  background-color: var(--color-bg-primary);
+  border-color: var(--color-accent);
+}
+
+.searchInput::placeholder {
+  color: var(--color-text-secondary);
+}
+
+/* Cards */
+.card {
+  background-color: var(--color-bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.cardTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+}
+
+/* News */
+.newsItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) 0;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background-color 0.2s;
+}
+
+.newsItem:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.newsMeta {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.newsTitle {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  line-height: 1.4;
+}
+
+/* Trends */
+.trendItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) 0;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background-color 0.2s;
+}
+
+.trendItem:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.trendCategory {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.trendTopic {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+}
+
+.trendCount {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.showMore {
+  font-size: var(--font-size-sm);
+  color: var(--color-accent);
+  cursor: pointer;
+  padding: var(--space-2) 0;
+}
+
+.showMore:hover {
+  text-decoration: underline;
+}
+
+/* Who to follow */
+.followItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+
+.followInfo {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.followName {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.followHandle {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.followBtn {
+  padding: 6px 16px;
+  background-color: var(--color-text-primary);
+  color: var(--color-bg-primary);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  transition: background-color 0.2s;
+  flex-shrink: 0;
+}
+
+.followBtn:hover {
+  background-color: #d7dbdc;
+}
+
+@media (max-width: 1000px) {
+  .sidebar {
+    display: none;
+  }
+}

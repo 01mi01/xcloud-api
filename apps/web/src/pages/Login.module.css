@@ -1,0 +1,181 @@
+/* Login page layout */
+.container {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* Left side — form */
+.left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-end;
+  padding: var(--space-6) 80px var(--space-6) var(--space-6);
+  gap: var(--space-4);
+}
+
+.title {
+  font-size: 56px;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  line-height: 1.1;
+  margin-bottom: var(--space-4);
+  max-width: 360px;
+  width: 100%;
+}
+
+/* Input fields */
+.inputGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 360px;
+}
+
+.inputWrapper {
+  position: relative;
+  width: 100%;
+}
+
+.input {
+  width: 100%;
+  padding: 18px 12px 6px 12px;
+  background-color: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.input:focus {
+  border-color: var(--color-accent);
+}
+
+.inputLabel {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-md);
+  pointer-events: none;
+  transition: all 0.15s ease;
+}
+
+.input:focus + .inputLabel,
+.input:not(:placeholder-shown) + .inputLabel {
+  top: 8px;
+  transform: translateY(0);
+  font-size: var(--font-size-xs);
+}
+
+/* Buttons */
+.btnPrimary {
+  width: 100%;
+  max-width: 360px;
+  padding: 12px;
+  background-color: var(--color-text-primary);
+  color: var(--color-bg-primary);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
+  transition: background-color 0.2s;
+}
+
+.btnPrimary:hover {
+  background-color: #d7dbdc;
+}
+
+/* Divider — or */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 360px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background-color: var(--color-border);
+}
+
+.registerText {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+}
+
+.registerLink {
+  color: var(--color-accent);
+  font-weight: var(--font-weight-bold);
+}
+
+.registerLink:hover {
+  text-decoration: underline;
+}
+
+/* Right side — big X logo */
+.right {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: var(--space-6) var(--space-6) var(--space-6) 80px;
+  background-color: var(--color-bg-primary);
+}
+
+.rightLogo {
+  width: 550px;
+  height: 550px;
+  fill: var(--color-text-primary);
+}
+
+.errorText {
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+  width: 100%;
+  max-width: 360px;
+}
+
+/* Responsive — tablet */
+@media (max-width: 1000px) {
+  .right {
+    display: none;
+  }
+
+  .left {
+    flex: 1;
+    padding: var(--space-6) var(--space-6);
+    align-items: center;
+  }
+
+  .title {
+    font-size: var(--font-size-3xl);
+    text-align: center;
+  }
+}
+
+/* Responsive — mobile */
+@media (max-width: 500px) {
+  .left {
+    padding: 48px var(--space-4) var(--space-5);
+    justify-content: flex-start;
+  }
+
+  .title {
+    font-size: var(--font-size-2xl);
+  }
+}
