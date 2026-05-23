@@ -4,6 +4,23 @@ Definición del modelo API de un clon de Twitter construido con **Smithy 2.0**. 
 
 ---
 
+## Prerequisitos
+
+Antes de comenzar, asegúrate de tener instalado lo siguiente:
+
+### Software requerido
+
+| Software | Versión mínima | Verificación |
+|---|---|---|
+| **Java JDK** | 17 o superior | `java -version` |
+| **Git** | 2.x | `git --version` |
+
+
+### Nota sobre Gradle
+**No es necesario instalar Gradle manualmente.** El proyecto incluye el Gradle Wrapper (`gradlew` / `gradlew.bat`) que descarga automáticamente la versión correcta (8.11.1) la primera vez que se ejecuta.
+
+---
+
 ## Tecnologías
 
 | Herramienta | Versión |
