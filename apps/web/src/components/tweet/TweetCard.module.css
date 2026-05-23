@@ -1,0 +1,115 @@
+/* Individual tweet card */
+.card {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.card:hover {
+  background-color: var(--color-bg-hover);
+}
+
+/* Avatar column */
+.avatarCol {
+  flex-shrink: 0;
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-bg-secondary);
+}
+
+/* Content column */
+.content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* Header row */
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.displayName {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+}
+
+.handle,
+.dot,
+.time {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+/* Tweet text */
+.text {
+  font-size: var(--font-size-md);
+  color: var(--color-text-primary);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* Action buttons row */
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-2);
+  max-width: 425px;
+}
+
+.actionBtn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  padding: 6px;
+  border-radius: var(--radius-full);
+  transition: color 0.2s, background-color 0.2s;
+}
+
+/* Reply hover */
+.replyBtn:hover {
+  color: var(--color-accent);
+  background-color: rgba(29, 155, 240, 0.1);
+}
+
+/* Retweet hover and active */
+.retweetBtn:hover {
+  color: var(--color-success);
+  background-color: rgba(0, 186, 124, 0.1);
+}
+
+.retweeted {
+  color: var(--color-success);
+}
+
+/* Like hover and active */
+.likeBtn:hover {
+  color: var(--color-danger);
+  background-color: rgba(244, 33, 46, 0.1);
+}
+
+.liked {
+  color: var(--color-danger);
+}
+
+/* Views — no hover color change */
+.viewBtn:hover {
+  color: var(--color-accent);
+  background-color: rgba(29, 155, 240, 0.1);
+}

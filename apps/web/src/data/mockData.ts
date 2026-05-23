@@ -1,0 +1,127 @@
+import type { User, Tweet } from "../types";
+
+export const mockCurrentUser: User = {
+  userId: "1",
+  handle: "testuser",
+  displayName: "Test User",
+  bio: "This is a test account",
+  avatarUrl: "",
+  followersCount: 128,
+  followingCount: 64,
+  createdAt: "2024-01-01T00:00:00Z",
+};
+
+export const mockUsers: User[] = [
+  {
+    userId: "2",
+    handle: "user1234",
+    displayName: "User 1234",
+    bio: "Just a test account",
+    avatarUrl: "",
+    followersCount: 42,
+    followingCount: 17,
+    createdAt: "2024-01-01T00:00:00Z",
+  },
+  {
+    userId: "3",
+    handle: "user5678",
+    displayName: "User 5678",
+    bio: "Another test account",
+    avatarUrl: "",
+    followersCount: 89,
+    followingCount: 33,
+    createdAt: "2024-01-01T00:00:00Z",
+  },
+  {
+    userId: "4",
+    handle: "user9999",
+    displayName: "User 9999",
+    bio: "Yet another test account",
+    avatarUrl: "",
+    followersCount: 11,
+    followingCount: 5,
+    createdAt: "2024-01-01T00:00:00Z",
+  },
+];
+
+export const mockTweets: Tweet[] = [
+  {
+    tweetId: "1",
+    content: "Test tweet 1 — hello world",
+    author: mockUsers[0],
+    mediaUrls: [],
+    likesCount: 4,
+    retweetCount: 1,
+    repliesCount: 2,
+    createdAt: "2025-05-23T10:00:00Z",
+    replyToTweetId: null,
+    liked: false,
+    retweeted: false,
+  },
+  {
+    tweetId: "2",
+    content: "Test tweet 2 — this is some placeholder text",
+    author: mockUsers[1],
+    mediaUrls: [],
+    likesCount: 7,
+    retweetCount: 0,
+    repliesCount: 1,
+    createdAt: "2025-05-23T09:30:00Z",
+    replyToTweetId: null,
+    liked: true,
+    retweeted: false,
+  },
+  {
+    tweetId: "3",
+    content: "Test tweet 3 — just testing the feed layout",
+    author: mockUsers[2],
+    mediaUrls: [],
+    likesCount: 2,
+    retweetCount: 3,
+    repliesCount: 0,
+    createdAt: "2025-05-23T08:45:00Z",
+    replyToTweetId: null,
+    liked: false,
+    retweeted: true,
+  },
+  {
+    tweetId: "4",
+    content: "Test tweet 4 — still placeholder",
+    author: mockUsers[0],
+    mediaUrls: [],
+    likesCount: 0,
+    retweetCount: 0,
+    repliesCount: 0,
+    createdAt: "2025-05-22T22:00:00Z",
+    replyToTweetId: null,
+    liked: false,
+    retweeted: false,
+  },
+  {
+    tweetId: "5",
+    content: "Test tweet 5 — lorem ipsum dolor sit amet",
+    author: mockUsers[1],
+    mediaUrls: [],
+    likesCount: 13,
+    retweetCount: 2,
+    repliesCount: 4,
+    createdAt: "2025-05-22T18:30:00Z",
+    replyToTweetId: null,
+    liked: false,
+    retweeted: false,
+  },
+];
+
+export const mockNews = [
+  { title: "Test news story 1 — generic placeholder headline", age: "2 days ago", category: "General", postCount: "320.1K" },
+  { title: "Test news story 2 — another placeholder headline", age: "3 days ago", category: "General", postCount: "210.5K" },
+  { title: "Test news story 3 — yet another placeholder headline", age: "1 day ago", category: "General", postCount: "98.2K" },
+];
+
+export const mockTrends = [
+  { category: "General · Trending", topic: "#TestTrend1", tweetCount: "12K" },
+  { category: "General · Trending", topic: "#TestTrend2", tweetCount: "8K" },
+  { category: "General · Trending", topic: "#TestTrend3", tweetCount: "5K" },
+  { category: "Trending worldwide", topic: "TestTopic1", tweetCount: "3K" },
+  { category: "Trending worldwide", topic: "TestTopic2", tweetCount: "1K" },
+];
