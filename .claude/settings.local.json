@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell(& \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\pg_ctl.exe\" start -D \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\data\" 2>&1)"
+      "Bash(git clone *)",
+      "PowerShell(Invoke-RestMethod -Method POST -Uri \"http://localhost:3000/v1/auth/register\" -ContentType \"application/json\" -Body '{\"handle\":\"testuser\",\"email\":\"test@xcloud.com\",\"password\":\"Test1234!\"}')",
+      "PowerShell(Get-Content \"$env:TEMP\\\\tweet-service.log\")",
+      "PowerShell(docker exec xcloud-cassandra cqlsh -e \"DESCRIBE KEYSPACES\" 2>&1)"
     ]
   }
 }
