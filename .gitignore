@@ -1,1 +1,30 @@
+# ── Node ──────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+.npm
+
+# ── Build outputs ─────────────────────────────────────────────────────
+dist/
+build/
+*.js.map
+
+# ── Gradle ────────────────────────────────────────────────────────────
+.gradle/
+api-model/build/
+
+# ── Smithy generated (never committed directly) ───────────────────────
+packages/sdk-client/src/generated/
+packages/sdk-server/src/generated/
+
+# ── Environment ───────────────────────────────────────────────────────
 .env
+.env.local
+.env.*.local
+
+# ── CDK ───────────────────────────────────────────────────────────────
+infrastructure/cdk.out/
+
+# ── IDE ───────────────────────────────────────────────────────────────
+.DS_Store
+.vscode/
+.idea/

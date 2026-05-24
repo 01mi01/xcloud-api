@@ -1,0 +1,27 @@
+name: Smithy Generate
+
+on:
+  push:
+    paths:
+      - 'api-model/model/**'
+      - 'api-model/smithy-build.json'
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: 17
+      - name: Build Smithy model
+        run: cd api-model && ./gradlew build
+      - name: Copy sdk-client generated output
+        run: bash packages/sdk-client/scripts/generate.sh
+      - name: Copy sdk-server generated output
+        run: bash packages/sdk-server/scripts/generate.sh
+      - name: Commit generated code
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: regenerate SDK from Smithy model [skip ci]"
