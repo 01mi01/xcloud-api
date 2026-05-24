@@ -414,7 +414,7 @@ flowchart TD
     TweetDB[(Tweet DB - Cassandra)]
     UserDB[(User DB - PostgreSQL)]
     MediaStore[(Object Storage - S3)]
-    SearchIdx[(Search Index - Elasticsearch)]
+    SearchIdx[(Search Index - OpenSearch)]
     NotifDB[(Notification DB - PostgreSQL)]
 
     WSServer[WebSocket Server]
