@@ -1,6 +1,6 @@
 # xcloud-api
 
-A Twitter/X clone built as a Node.js microservices monorepo, deployed on AWS with EKS, Cognito, Kafka, Redis, and OpenSearch.
+A Twitter/X clone built as a Node.js microservices monorepo, deployed on AWS with ECS Fargate, Cognito, SQS, Redis, and OpenSearch.
 
 ## Tech Stack
 
@@ -13,11 +13,11 @@ A Twitter/X clone built as a Node.js microservices monorepo, deployed on AWS wit
 | Primary DB | PostgreSQL (RDS) |
 | Tweet store | Apache Cassandra (Keyspaces) |
 | Feed cache | Redis (ElastiCache) |
-| Messaging | Apache Kafka (MSK) |
+| Messaging | Amazon SQS |
 | Search | OpenSearch |
 | Media | S3 + presigned URLs |
 | Infrastructure | AWS CDK (TypeScript) |
-| Orchestration | Kubernetes (EKS) |
+| Orchestration | Amazon ECS (Fargate) |
 | CI/CD | GitHub Actions |
 
 ---
@@ -35,12 +35,12 @@ xcloud-api/
 │   └── services/
 │       ├── auth-service/         # Cognito OIDC — register, login, JWT
 │       ├── user-service/         # Profiles, follow graph (PostgreSQL)
-│       ├── tweet-service/        # Tweet CRUD + Kafka producer (Keyspaces)
+│       ├── tweet-service/        # Tweet CRUD + SQS producer (Keyspaces)
 │       ├── feed-service/         # Timeline — Redis cache + Keyspaces fallback
-│       ├── fanout-service/       # Kafka consumer — writes tweets to follower caches
+│       ├── fanout-service/       # SQS consumer — writes tweets to follower caches
 │       ├── media-service/        # S3 presigned URL generation
-│       ├── notification-service/ # WebSocket notifications via Kafka
-│       └── search-service/       # Full-text search via OpenSearch + Kafka indexer
+│       ├── notification-service/ # WebSocket notifications via SQS
+│       └── search-service/       # Full-text search via OpenSearch + SQS indexer
 │
 ├── packages/
 │   ├── shared/                   # Shared middleware, errors, utils (dual ESM/CJS)
@@ -52,9 +52,9 @@ xcloud-api/
 │   └── model/                    # *.smithy files
 │
 ├── infrastructure/               # AWS CDK stacks (TypeScript)
-│   └── lib/stacks/               # networking, EKS, auth, database, cache, …
+│   └── lib/stacks/               # networking, ECS, auth, database, cache, …
 │
-├── k8s/                          # Kubernetes manifests
+├── k8s/                          # Kubernetes manifests (reference only — superseded by ECS Fargate; see ADR-002)
 │   ├── base/                     # namespace, service account
 │   └── services/                 # deployment, service, HPA per microservice
 │
@@ -170,4 +170,4 @@ The `smithy-generate.yml` GitHub Actions workflow runs this automatically whenev
 
 ## AWS Costs
 
-Running the full infrastructure stack (EKS, RDS, ElastiCache, MSK, OpenSearch, Cognito) incurs real AWS costs. The Cognito free tier covers 50,000 MAU. All other services are pay-as-you-go. Review the CDK stacks in `infrastructure/lib/stacks/` before deploying.
+Running the full infrastructure stack (ECS Fargate, RDS, ElastiCache, SQS, OpenSearch, Cognito) incurs real AWS costs. ECS Fargate has no cluster fee (pay per vCPU/GB-second) and SQS includes 1M requests/month free — both were chosen to reduce cost (see ADR-001 and ADR-002). The Cognito free tier covers 50,000 MAU. All other services are pay-as-you-go. Review the CDK stacks in `infrastructure/lib/stacks/` before deploying.

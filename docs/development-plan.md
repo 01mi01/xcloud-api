@@ -333,7 +333,7 @@ twitter-clone/
 │   ├── lib/
 │   │   ├── stacks/
 │   │   │   ├── networking-stack.ts
-│   │   │   ├── eks-stack.ts
+│   │   │   ├── ecs-stack.ts
 │   │   │   ├── auth-stack.ts
 │   │   │   ├── database-stack.ts
 │   │   │   ├── cache-stack.ts
@@ -347,7 +347,7 @@ twitter-clone/
 │   │   │   ├── microservice-construct.ts
 │   │   │   ├── rds-construct.ts
 │   │   │   ├── redis-construct.ts
-│   │   │   ├── msk-construct.ts
+│   │   │   ├── sqs-construct.ts
 │   │   │   ├── cognito-construct.ts
 │   │   │   └── alarm-construct.ts
 │   │   └── config/
@@ -456,7 +456,7 @@ Base técnica que habilita el desarrollo de todas las demás épicas.
 Como developer, quiero tener el monorepo configurado con workspaces, tsconfig base y scripts compartidos, para que el equipo pueda trabajar de forma consistente desde el inicio.
 
 **HU-02 — Setup de infraestructura base CDK**
-Como developer, quiero tener los stacks CDK iniciales (networking, EKS, IAM) desplegados en el ambiente beta, para poder desplegar servicios sobre ellos.
+Como developer, quiero tener los stacks CDK iniciales (networking, ECS, IAM) desplegados en el ambiente beta, para poder desplegar servicios sobre ellos.
 
 **HU-03 — Pipeline CI/CD base**
 Como developer, quiero tener los workflows de GitHub Actions configurados para lint, tests y deploy automático a beta, para que cada PR tenga validación automática.
@@ -564,7 +564,7 @@ Como developer, quiero que el feed se sirva desde ElastiCache Redis con fallback
 Indexación y consulta de contenido.
 
 **HU-28 — Indexación de tweets en OpenSearch**
-Como developer, quiero que cada tweet publicado se indexe automáticamente en OpenSearch via Kafka, para habilitarlo en la búsqueda.
+Como developer, quiero que cada tweet publicado se indexe automáticamente en OpenSearch via SQS, para habilitarlo en la búsqueda.
 
 **HU-29 — Buscar tweets por keyword o hashtag**
 Como usuario, quiero poder buscar tweets por palabras clave y hashtags, para descubrir contenido de mi interés.
@@ -696,7 +696,7 @@ flowchart TB
 
             subgraph PRIVATE["Private Subnets"]
                 subgraph PRIV_A["AZ us-east-1a — 10.0.3.0/24"]
-                    subgraph EKS_A["EKS Node Group — AZ-a"]
+                    subgraph ECS_A["ECS / Fargate — AZ-a"]
                         AUTH["Auth\nService"]
                         USER["User\nService"]
                         TWEET["Tweet\nService"]
@@ -704,7 +704,7 @@ flowchart TB
                     end
                 end
                 subgraph PRIV_B["AZ us-east-1b — 10.0.4.0/24"]
-                    subgraph EKS_B["EKS Node Group — AZ-b"]
+                    subgraph ECS_B["ECS / Fargate — AZ-b"]
                         FANOUT["Fan-out\nService"]
                         MEDIA["Media\nService"]
                         NOTIF["Notification\nService"]
@@ -717,12 +717,10 @@ flowchart TB
                 subgraph ISO_A["AZ us-east-1a — 10.0.5.0/24"]
                     RDS_PRIMARY["RDS PostgreSQL\n(Primary)\nUsers + Follows\nNotifications"]
                     REDIS_PRIMARY["ElastiCache Redis\n(Primary)\nFeed Cache"]
-                    MSK_A["MSK Kafka\n(Broker 1)\nTweetCreated\nLikeEvent\nFollowEvent"]
                 end
                 subgraph ISO_B["AZ us-east-1b — 10.0.6.0/24"]
                     RDS_REPLICA["RDS PostgreSQL\n(Replica)\nRead Replica"]
                     REDIS_REPLICA["ElastiCache Redis\n(Replica)"]
-                    MSK_B["MSK Kafka\n(Broker 2)"]
                     KEYSPACES["Amazon Keyspaces\n(Cassandra)\nTweets + Likes"]
                     OPENSEARCH["Amazon OpenSearch\nSearch Index\nTweets + Users"]
                 end
@@ -731,6 +729,7 @@ flowchart TB
         end
 
         S3["Amazon S3\n(Media Storage)"]
+        SQS["Amazon SQS\n(tweet-created.fifo\nlike-event · follow-event · tweet-index)"]
         SECRETS["AWS Secrets Manager"]
         CW["Amazon CloudWatch\n(Metrics + Alarms)"]
         XRAY["AWS X-Ray\n(Distributed Tracing)"]
@@ -768,12 +767,11 @@ flowchart TB
     %% ── Inter-service gRPC ──────────────────────────
     FEED -->|gRPC GetTweetsByIds| TWEET
 
-    %% ── Services → MSK ──────────────────────────────
-    TWEET -->|publish TweetCreated\nLikeEvent| MSK_A
-    MSK_A <-->|replicate| MSK_B
-    MSK_A -->|consume| FANOUT
-    MSK_A -->|consume| NOTIF
-    MSK_A -->|consume| SEARCH
+    %% ── Services → SQS ──────────────────────────────
+    TWEET -->|send TweetCreated / LikeEvent| SQS
+    SQS -->|poll| FANOUT
+    SQS -->|poll| NOTIF
+    SQS -->|poll| SEARCH
 
     %% ── Services → Databases ────────────────────────
     AUTH -->|read/write| RDS_PRIMARY
@@ -795,13 +793,13 @@ flowchart TB
     S3 -->|media delivery| CF
 
     %% ── Observability ───────────────────────────────
-    EKS_A -->|metrics + traces| CW
-    EKS_B -->|metrics + traces| CW
+    ECS_A -->|metrics + traces| CW
+    ECS_B -->|metrics + traces| CW
     CW --> XRAY
 
     %% ── Secrets ─────────────────────────────────────
-    EKS_A -->|fetch secrets| SECRETS
-    EKS_B -->|fetch secrets| SECRETS
+    ECS_A -->|fetch secrets| SECRETS
+    ECS_B -->|fetch secrets| SECRETS
 
     %% ── Styles ──────────────────────────────────────
     classDef client       fill:#dae8fc,stroke:#6c8ebf,color:#000
@@ -818,7 +816,7 @@ flowchart TB
     class ALB_A,ALB_B,APIGW_A,APIGW_WS_A gateway
     class AUTH,USER,TWEET,FEED,FANOUT,MEDIA,NOTIF,SEARCH service
     class RDS_PRIMARY,RDS_REPLICA,REDIS_PRIMARY,REDIS_REPLICA,KEYSPACES,OPENSEARCH database
-    class MSK_A,MSK_B messaging
+    class SQS messaging
     class CW,XRAY,SECRETS observ
     class COG global
     class S3 database
@@ -829,7 +827,7 @@ flowchart TB
 Algunas notas del diagrama:
 
 - Las **subnets públicas** tienen redundancia en dos AZs con el ALB replicado.
-- Las **subnets privadas** distribuyen los servicios EKS entre AZ-a y AZ-b para alta disponibilidad.
+- Las **subnets privadas** distribuyen los servicios ECS (Fargate) entre AZ-a y AZ-b para alta disponibilidad.
 - Las **subnets aisladas** no tienen acceso a internet, solo los servicios internos pueden alcanzar las bases de datos.
 - **Cognito y CloudFront** viven fuera de la VPC porque son servicios globales de AWS.
-- **MSK** tiene sus brokers distribuidos entre AZs con replicación entre ellos.
+- **SQS** es un servicio regional gestionado (multi-AZ nativo); no reside en subnets ni requiere brokers, por eso se ubica fuera de la VPC.

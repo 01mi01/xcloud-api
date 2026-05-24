@@ -392,7 +392,7 @@ end
 
 ### 5.3 Componentes
 
-El sistema se compone de los siguientes servicios cloud-native, todos desplegados en contenedores (Docker/Kubernetes) sobre infraestructura nueva aprovisionada en el proveedor cloud AWS.
+El sistema se compone de los siguientes servicios cloud-native, todos desplegados como contenedores Docker sobre Amazon ECS con Fargate (ver ADR-002) en infraestructura nueva aprovisionada en el proveedor cloud AWS.
 
 ```mermaid
 flowchart TD
@@ -409,7 +409,7 @@ flowchart TD
     NotifSvc[Notification Service]
     SearchSvc[Search Service]
 
-    MQ[(Message Queue - Kafka)]
+    MQ[(Message Queue - SQS)]
     Redis[(Feed Cache - Redis Cluster)]
     TweetDB[(Tweet DB - Cassandra)]
     UserDB[(User DB - PostgreSQL)]
@@ -464,17 +464,17 @@ flowchart TD
 
 **User Service** — CRUD de perfiles y gestión del grafo social (follows). Lee y escribe en User DB (PostgreSQL) por su necesidad de consultas relacionales (followers, following counts).
 
-**Tweet Service** — Creación, lectura y borrado de tweets. Persiste en Cassandra por su modelo de escritura intensiva y necesidad de escalado horizontal. Publica eventos a Kafka tras cada operación relevante.
+**Tweet Service** — Creación, lectura y borrado de tweets. Persiste en Cassandra por su modelo de escritura intensiva y necesidad de escalado horizontal. Publica eventos a las colas SQS (`tweet-created.fifo`, `tweet-index`) tras cada operación relevante.
 
 **Feed Service** — Construye y sirve el feed del usuario. Primero consulta Redis (feed pre-computado como lista de tweetIds). En cache miss, reconstruye desde TweetDB y re-cachea. Hidrata los tweetIds via gRPC al Tweet Service.
 
-**Fan-out Service** — Consume eventos `TweetCreated` de Kafka. Obtiene la lista de followers del autor desde User DB y escribe el tweetId en el feed cache de cada follower en Redis (fan-out on write). Para usuarios con millones de followers (celebrities), aplica fan-out on read en su lugar.
+**Fan-out Service** — Consume mensajes de la cola SQS `xcloud-tweet-created.fifo`. Obtiene la lista de followers del autor desde User DB y escribe el tweetId en el feed cache de cada follower en Redis (fan-out on write). Para usuarios con millones de followers (celebrities), aplica fan-out on read en su lugar.
 
 **Media Service** — Gestiona upload y validación de archivos multimedia. Almacena en S3 y retorna URLs públicas servidas por CDN.
 
-**Search Service** — Indexa tweets y usuarios en Elasticsearch al consumir eventos de Kafka. Sirve queries de búsqueda full-text por hashtag, keyword y handle.
+**Search Service** — Indexa tweets y usuarios en OpenSearch al consumir mensajes de la cola SQS `xcloud-tweet-index`. Sirve queries de búsqueda full-text por hashtag, keyword y handle.
 
-**Notification Service** — Consume eventos de Kafka (likes, retweets, follows, mentions). Persiste notificaciones en NotifDB y las entrega en tiempo real via WebSocket Server.
+**Notification Service** — Consume mensajes de las colas SQS `xcloud-like-event` y `xcloud-follow-event`. Persiste notificaciones en NotifDB y las entrega en tiempo real via WebSocket Server.
 
 **WebSocket Server** — Mantiene conexiones persistentes con clientes activos. Recibe push del Notification Service y los despacha al cliente correspondiente.
 
@@ -538,7 +538,7 @@ timeline
 | **Base de datos para usuarios** | DynamoDB, MongoDB | PostgreSQL (Amazon RDS) | Queries relacionales para followers/following (grafo social). ACID para operaciones críticas de cuenta. Madurez y ecosistema. | Escalamiento horizontal limitado — mitigado con Read Replicas. Más costoso a escala masiva. |
 | **Estrategia de fan-out del feed** | Fan-out on read (pull al consultar) | Fan-out on write (push al publicar) | Feed pre-computado en Redis — latencia de lectura mínima (~15ms). Experiencia de usuario más rápida. | Alto costo de escritura para cuentas con millones de followers (celebrity problem). Mitigado con fan-out on read para cuentas con >1M followers. |
 | **Comunicación inter-servicio** | REST entre microservicios | gRPC para comunicación interna, REST para API pública | gRPC ~10x más rápido que REST (HTTP/2 + Protobuf binario). Contratos fuertes con Protobuf. Streaming bidireccional. | Mayor complejidad de implementación. Requiere generación de stubs. No legible directamente por humanos. |
-| **Message broker** | Amazon SQS, RabbitMQ | Apache Kafka (Amazon MSK) | Retención de mensajes configurable. Múltiples consumers del mismo topic (fan-out, notificaciones, search). Alto throughput para eventos de tweets. | Mayor complejidad operacional que SQS. Costo más alto. Overkill para volúmenes pequeños. |
+| **Message broker** | Apache Kafka (Amazon MSK), RabbitMQ | Amazon SQS (ver ADR-001) | Primer 1M de requests/mes gratis — costo ~$0 a escala demo. Sin brokers que gestionar. Integración nativa con IAM, CloudWatch y Lambda; DLQ por cola. | Sin consumer groups ni replay de mensajes. Fan-out a múltiples consumers independientes requiere Amazon SNS. FIFO limitado a 3,000 msg/s. |
 
 ## 6. Inmersiones profundas
 
@@ -619,11 +619,11 @@ erDiagram
 | Componente | Servicio AWS | Estrategia |
 | --- | --- | --- |
 | API Gateway + LB | AWS ALB + API Gateway | Auto-scaling por métricas de request rate |
-| Microservicios | Amazon EKS (Kubernetes) | HPA por CPU/RPS, nodos con Karpenter |
+| Microservicios | Amazon ECS + Fargate | Service Auto Scaling (target tracking) por CPU/RPS, sin gestión de nodos |
 | Tweet DB | Amazon Keyspaces | On-demand capacity, escala automática |
 | User DB | Amazon RDS PostgreSQL | Multi-AZ, Read Replicas para lecturas |
 | Feed Cache | Amazon ElastiCache (Redis Cluster) | Sharding por userId, cluster mode ON |
-| Message Queue | Amazon MSK (Kafka managed) | Particiones por userId, escalado de brokers |
+| Message Queue | Amazon SQS | Escala nativa sin gestión de brokers; DLQ por cola, FIFO para `tweet-created` |
 | Object Storage | Amazon S3 | Escala nativa, sin límite práctico |
 | Search | Amazon OpenSearch Service | Auto-scaling de data nodes |
 | WebSocket | Amazon API Gateway WebSocket | Escala nativa por conexiones |
@@ -634,8 +634,10 @@ erDiagram
 **Estimación de Costos Mensuales (Fase 1 — single region, producción):**
 
 ```bash
-— Amazon EKS (nodos de cómputo) —
-~20 nodos m6i.xlarge * $0.192/h * 730h = ~$2,803/mes
+— Amazon ECS + Fargate (8 servicios, 1 task c/u, 0.25 vCPU / 0.5 GB) — sizing demo, ver ADR-002 —
+8 tasks * 0.25 vCPU * $0.04048/vCPU-h * 730h = ~$59/mes
+8 tasks * 0.5 GB  * $0.004445/GB-h  * 730h = ~$13/mes
+Subtotal cómputo = ~$72/mes (sin tarifa fija de cluster)
 
 — Amazon RDS PostgreSQL (Multi-AZ db.r6g.2xlarge) —
 1 instancia * $0.48/h * 730h = ~$350/mes
@@ -649,8 +651,8 @@ Storage: 0.5 TB * $0.25/GB = ~$128/mes
 — Amazon ElastiCache Redis (cache.r7g.xlarge x3 nodos) —
 3 * $0.248/h * 730h = ~$543/mes
 
-— Amazon MSK (Kafka, 3 brokers kafka.m5.large) —
-3 * $0.21/h * 730h = ~$460/mes
+— Amazon SQS (4 colas + DLQ) — ver ADR-001 —
+Primer 1M requests/mes gratis; ~$0/mes a escala demo (hasta ~$72/mes a escala producción)
 
 — Amazon S3 (media, 500 GB mes 1, +500 GB/mes) —
 500 GB * $0.023/GB = ~$12/mes (crece con el tiempo)
@@ -665,11 +667,16 @@ Storage: 0.5 TB * $0.25/GB = ~$128/mes
 ~$150/mes estimado
 
 ─────────────────────────────────────────
-Total estimado Fase 1:       ~$6,047/mes
-Total con overhead (30%):    ~$7,861/mes
+Total estimado Fase 1:       ~$2,856/mes
+Total con overhead (30%):    ~$3,713/mes
 
 Región/Stage pairs (prod + beta + gamma):
-$7,861 * 2 (prod + pre-prod) = ~$15,722/mes
+$3,713 * 2 (prod + pre-prod) = ~$7,426/mes
+
+Nota: las líneas de ECS Fargate y SQS reflejan el sizing demo cost-optimizado
+adoptado en ADR-001 y ADR-002 (de ~$3,263/mes en EKS+MSK a ~$72/mes). Los demás
+componentes (RDS, ElastiCache, OpenSearch, CloudFront) mantienen la estimación
+de producción original y son candidatos a la misma optimización de free tier.
 ```
 
 ### 6.3 Métricas y monitoreo
@@ -682,11 +689,11 @@ Toda la observabilidad centralizada en **Amazon CloudWatch** + **AWS X-Ray** par
 | API Gateway | 5xx Error Rate | > 0.1% | SEV-1 | api-health-dashboard | Errores de servidor en cualquier endpoint. Trigger immediate on-call. |
 | Tweet Service | WriteLatency | > 500ms | SEV-2 | tweet-write-dashboard | Escritura en Keyspaces degradada. Revisar WCU y throttling. |
 | ElastiCache Redis | CacheHitRate | < 85% | SEV-3 | feed-cache-dashboard | Tasa de hit baja indica TTL incorrecto o fan-out fallando. |
-| MSK Kafka | ConsumerLag (Fan-out) | > 10,000 msgs | SEV-2 | fanout-dashboard | Fan-out Service no procesa a tiempo. Feed delays inminentes. |
-| MSK Kafka | ConsumerLag (Notif) | > 50,000 msgs | SEV-3 | notification-dashboard | Notificaciones retrasadas. No crítico para disponibilidad. |
+| SQS (tweet-created) | ApproximateAgeOfOldestMessage | > 60 s | SEV-2 | fanout-dashboard | Fan-out Service no procesa a tiempo. Feed delays inminentes. |
+| SQS (like/follow) | ApproximateNumberOfMessagesVisible | > 50,000 msgs | SEV-3 | notification-dashboard | Notificaciones retrasadas. No crítico para disponibilidad. |
 | RDS PostgreSQL | CPUUtilization | > 80% | SEV-2 | user-db-dashboard | Considerar failover a Read Replica o scale up. |
 | Keyspaces | ThrottledRequests | > 100/min | SEV-2 | tweet-db-dashboard | Capacidad de R/W insuficiente. Ajustar on-demand o provisioned. |
-| EKS Nodes | MemoryUtilization | > 85% | SEV-3 | infra-dashboard | Riesgo de OOM. Karpenter debe haber lanzado nuevos nodos. |
+| ECS / Fargate | MemoryUtilization | > 85% | SEV-3 | infra-dashboard | Riesgo de OOM en task. Service Auto Scaling debe escalar el número de tasks. |
 | WebSocket Server | ActiveConnections | drop > 20%/min | SEV-1 | realtime-dashboard | Caída masiva de conexiones. Posible falla de servicio. |
 
 **SOP Links:** Cada alarma incluye un runbook vinculado en la descripción de la alarma en CloudWatch con pasos de diagnóstico y escalación.
@@ -700,10 +707,10 @@ Toda la observabilidad centralizada en **Amazon CloudWatch** + **AWS X-Ray** par
 - **API pública REST:** Todos los endpoints pasan por AWS WAF con reglas para SQLi, XSS y rate limiting por IP. Inputs validados y sanitizados en cada servicio (sin caracteres `;`, `<`, `>` sin escapar, longitudes máximas aplicadas en capa de API y de servicio).
 - **Autenticación:** JWT firmados con RS256 (clave privada en AWS Secrets Manager, rotación automática cada 90 días). Tokens con expiración de 15 minutos + refresh token en HttpOnly cookie.
 - **Almacenamiento de credenciales:** Passwords hasheados con **Argon2id** (nunca bcrypt en nuevas implementaciones). Salted por usuario.
-- **Cifrado en tránsito:** TLS 1.3 obligatorio en todos los endpoints externos. gRPC inter-servicio con mTLS dentro del cluster EKS vía AWS Certificate Manager + Istio service mesh.
+- **Cifrado en tránsito:** TLS 1.3 obligatorio en todos los endpoints externos. gRPC inter-servicio sobre TLS dentro de la VPC (security groups + AWS Certificate Manager). El service mesh (Istio/Linkerd) no aplica en ECS; la observabilidad inter-servicio usa CloudWatch Container Insights (ver ADR-002).
 - **Cifrado en reposo:** S3 con SSE-KMS, RDS con cifrado habilitado en volumen EBS, ElastiCache con at-rest encryption, Keyspaces cifrado nativo.
 - **Secrets Management:** Toda credencial almacenada en AWS Secrets Manager. Ningún secreto en variables de entorno planas ni en código fuente.
-- **IAM mínimo privilegio:** Cada microservicio con su propio IAM Role (IRSA en EKS), con permisos exclusivos a los recursos que necesita.
+- **IAM mínimo privilegio:** Cada microservicio con su propio IAM Role (ECS Task Role), con permisos exclusivos a los recursos que necesita.
 - **Pruebas de penetración:** Programadas trimestralmente a partir del lanzamiento de Fase 1. Scope: API pública, autenticación, upload de media.
 - **GDPR/CCPA:** Endpoint `DELETE /v1/users/me` implementa borrado completo (hard delete en UserDB, soft delete en TweetDB marcado para purga batch a 30 días). Logs de acceso a datos de usuario retenidos con audit trail en CloudTrail.
 
@@ -1020,14 +1027,15 @@ Manager, rotación automática cada 90 días). Tokens con expiración de
 - **Almacenamiento de credenciales:** Passwords hasheados con **Argon2id**
 (nunca bcrypt en nuevas implementaciones). Salted por usuario.
 - **Cifrado en tránsito:** TLS 1.3 obligatorio en todos los endpoints
-externos. gRPC inter-servicio con mTLS dentro del cluster EKS vía
-AWS Certificate Manager + Istio service mesh.
+externos. gRPC inter-servicio sobre TLS dentro de la VPC (security groups +
+AWS Certificate Manager). El service mesh (Istio/Linkerd) no aplica en ECS;
+la observabilidad inter-servicio usa CloudWatch Container Insights (ver ADR-002).
 - **Cifrado en reposo:** S3 con SSE-KMS, RDS con cifrado habilitado en
 volumen EBS, ElastiCache con at-rest encryption, Keyspaces cifrado nativo.
 - **Secrets Management:** Toda credencial almacenada en AWS Secrets Manager.
 Ningún secreto en variables de entorno planas ni en código fuente.
 - **IAM mínimo privilegio:** Cada microservicio con su propio IAM Role
-(IRSA en EKS), con permisos exclusivos a los recursos que necesita.
+(ECS Task Role), con permisos exclusivos a los recursos que necesita.
 - **Pruebas de penetración:** Programadas trimestralmente a partir del
 lanzamiento de Fase 1. Scope: API pública, autenticación, upload de media.
 - **GDPR/CCPA:** Endpoint `DELETE /v1/users/me` implementa borrado completo
@@ -1045,7 +1053,7 @@ en CloudTrail.
 
 **Escala 10x (500M DAU):**
 
-- Fan-out Service requerirá particionado adicional en Kafka y procesamiento paralelo. Se dividirá en Fan-out-Write (usuarios regulares) y Fan-out-Read (cuentas con >1M followers, celebrity problem).
+- Fan-out Service requerirá particionar el trabajo en múltiples colas SQS y procesamiento paralelo; si se superan los límites de throughput de SQS, se evaluará migrar a Kafka/Kinesis (ver ADR-001). Se dividirá en Fan-out-Write (usuarios regulares) y Fan-out-Read (cuentas con >1M followers, celebrity problem).
 - ElastiCache pasará a arquitectura de cluster multi-shard con read replicas por región.
 - Se introducirá **Amazon DynamoDB Accelerator (DAX)** si se migra User DB a DynamoDB para escalar reads de perfiles.
 
@@ -1065,7 +1073,7 @@ en CloudTrail.
 
 - **Auth Service vs User Service:** La validación del token podría moverse al API Gateway como middleware universal (Lambda Authorizer en AWS API Gateway), dejando al Auth Service solo para emisión y revocación. Esto elimina un hop de red en cada request autenticado.
 - **Fan-out Service vs Feed Service:** En sistemas de mayor escala ambos convergen en un pipeline de feed unificado. Por ahora se mantienen separados porque sus tasas de cambio son independientes.
-- **Notification Service vs WebSocket Server:** El WebSocket Server es un componente de transporte puro. En Fase 2 se evaluará reemplazarlo por **AWS API Gateway WebSocket** nativo, eliminando la necesidad de gestionar conexiones en EKS.
+- **Notification Service vs WebSocket Server:** El WebSocket Server es un componente de transporte puro. En Fase 2 se evaluará reemplazarlo por **AWS API Gateway WebSocket** nativo, eliminando la necesidad de gestionar conexiones en ECS.
 
 **Límites de servicio que permanecen separados:**
 
@@ -1073,7 +1081,7 @@ en CloudTrail.
 
 ### 6.7 Proceso de Lanzamiento
 
-**Pipeline de CI/CD:** GitHub Actions → Amazon ECR → ArgoCD (GitOps sobre EKS).
+**Pipeline de CI/CD:** GitHub Actions → Amazon ECR → AWS CDK deploy (ECS rolling update).
 
 ```bash
 Stages:
@@ -1088,7 +1096,7 @@ Stages:
 
 **Orden de despliegue:** Los servicios son independientes y se despliegan en paralelo. La única dependencia de orden es: migraciones de schema (Flyway) deben completarse antes del despliegue del servicio que las consume.
 
-**Rollback:** Cada servicio puede revertirse de forma independiente mediante ArgoCD apuntando al tag de imagen anterior en el repositorio GitOps. El rollback no causa interrupción gracias al rolling update de Kubernetes.
+**Rollback:** Cada servicio puede revertirse de forma independiente re-desplegando la revisión anterior de la task definition (tag de imagen previo en ECR) vía CDK. El rollback no causa interrupción gracias al rolling update de ECS (minHealthyPercent / maxPercent).
 
 **Feature Flags:** Funcionalidades nuevas habilitadas progresivamente via **AWS AppConfig** (0% → 5% → 25% → 100% de usuarios). El equipo de on-call monitorea métricas de error durante cada incremento antes de continuar.
 
@@ -1099,7 +1107,7 @@ Stages:
 **Fase 1 — Single Region:**
 
 - Región primaria: `us-east-1` (N. Virginia) — mayor cobertura de servicios AWS y menor costo.
-- Multi-AZ habilitado en todos los componentes con estado (RDS, ElastiCache, MSK).
+- Multi-AZ habilitado en todos los componentes con estado (RDS, ElastiCache). SQS es un servicio regional con redundancia multi-AZ nativa.
 
 **Fase 2 — Multi-Region Activo-Pasivo:**
 
@@ -1110,7 +1118,7 @@ Stages:
 
 **Servicios no disponibles en todas las regiones:**
 
-- Amazon Keyspaces tiene disponibilidad limitada. Se verificará disponibilidad en cada región objetivo antes de confirmar la selección. Alternativa: Cassandra self-managed en EKS si Keyspaces no está disponible.
+- Amazon Keyspaces tiene disponibilidad limitada. Se verificará disponibilidad en cada región objetivo antes de confirmar la selección. Alternativa: Cassandra self-managed en contenedores ECS/EC2 si Keyspaces no está disponible.
 
 ### 6.9  Reteción de datos
 
@@ -1149,7 +1157,7 @@ Costo S3 año 3:     ~560 TB * $0.004/GB (Glacier) = ~$2,300/mes
 
 - Suite completa ejecutada en stage `beta` post-deploy.
 - Cubren: flujo completo de tweet (create → fan-out → feed read), autenticación end-to-end, upload de media.
-- Dependencias: instancias dedicadas de RDS, Keyspaces, ElastiCache y MSK en el ambiente `beta`.
+- Dependencias: instancias dedicadas de RDS, Keyspaces, ElastiCache y colas SQS en el ambiente `beta`.
 
 **Pruebas de Carga:**
 
@@ -1166,14 +1174,14 @@ Costo S3 año 3:     ~560 TB * $0.004/GB (Glacier) = ~$2,300/mes
 **Smoke Tests en Producción:**
 
 - Suite mínima de 10 tests críticos ejecutados automáticamente post-deploy a `prod`.
-- Si alguno falla, ArgoCD ejecuta rollback automático en < 5 minutos.
+- Si alguno falla, ECS revierte automáticamente a la revisión anterior de la task definition (deployment circuit breaker) en < 5 minutos.
 
 ### 6.11 Dependencias
 
 | Sistema | Equipo Propietario | Cambio Requerido | Estado |
 | --- | --- | --- | --- |
 | Amazon Keyspaces | AWS | Confirmar disponibilidad en regiones target | Pendiente verificación |
-| Amazon MSK (Kafka) | AWS | Confirmar límite de particiones para volumen proyectado | Pendiente |
+| Amazon SQS | AWS | Confirmar límites de throughput (FIFO 3,000 msg/s) para volumen proyectado | Pendiente |
 | AWS Certificate Manager | Plataforma / DevOps | Emisión de certificados para dominios del servicio | Por gestionar |
 | PagerDuty | SRE / Ops | Configurar routing de alertas CloudWatch → PagerDuty | Por gestionar |
 | DNS / Route 53 | Infraestructura | Registro de dominios y hosted zones | Por gestionar |
@@ -1185,11 +1193,11 @@ Costo S3 año 3:     ~560 TB * $0.004/GB (Glacier) = ~$2,300/mes
 - **Reindexado de OpenSearch:** Si el índice de búsqueda se corrompe o requiere re-mapping, se ejecuta un job de reindexado batch desde Keyspaces. Runbook: `runbooks/search-reindex.md`.
 - **Purgado manual de feed cache:** En caso de bug que haya escrito datos incorrectos en Redis, se dispone de un script de invalidación masiva por patrón de key. Requiere aprobación del tech lead. Runbook: `runbooks/cache-invalidation.md`.
 - **Rotación de secretos:** Secrets Manager rota automáticamente las credenciales de RDS y Keyspaces cada 30 días. El operador verifica en CloudWatch que los servicios recargan el secreto sin downtime.
-- **Escalado manual de MSK:** En eventos de tráfico excepcional (lanzamiento de producto, evento viral), el SRE puede agregar brokers manualmente antes del pico previsto.
+- **Re-procesamiento de DLQ (SQS):** SQS escala automáticamente sin gestión de brokers. Ante mensajes acumulados en una dead-letter queue, el operador ejecuta un redrive a la cola principal tras corregir la causa raíz.
 
 **Dashboard principal de operaciones:**
 
-- `ops-main-dashboard` en CloudWatch con widgets de: API error rate, Feed latency p99, Kafka consumer lag, Redis hit rate, RDS connections activas, EKS node utilization.
+- `ops-main-dashboard` en CloudWatch con widgets de: API error rate, Feed latency p99, SQS queue depth / oldest-message age, Redis hit rate, RDS connections activas, ECS service CPU/memory utilization.
 - Este es el primer punto de entrada para el equipo on-call ante cualquier alerta.
 
 **On-call rotation:** Rotación semanal entre el equipo de ingeniería. Todas las alarmas SEV-1 y SEV-2 crean ticket automático en PagerDuty con link al runbook correspondiente y al dashboard de la métrica afectada.
