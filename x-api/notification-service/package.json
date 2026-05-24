@@ -1,5 +1,5 @@
 {
-  "name": "tweet-service",
+  "name": "notification-service",
   "version": "1.0.0",
   "main": "dist/index.js",
   "scripts": {
@@ -8,18 +8,15 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "test": "jest --runInBand"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "description": "Notification Service — consume Kafka events, persist to PostgreSQL, push via WebSocket",
   "dependencies": {
-    "cassandra-driver": "^4.9.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "kafkajs": "^2.2.4",
     "pg": "^8.13.3",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
@@ -27,17 +24,11 @@
     "@types/jsonwebtoken": "^9.0.9",
     "@types/node": "^22.0.0",
     "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.5.10",
     "jest": "^29.7.0",
-    "nodemon": "^3.1.14",
     "ts-jest": "^29.3.4",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.8.3"
   },
-  "jest": {
-    "preset": "ts-jest",
-    "testEnvironment": "node",
-    "testMatch": [
-      "**/test/**/*.test.ts"
-    ]
-  }
+  "jest": { "preset": "ts-jest", "testEnvironment": "node", "testMatch": ["**/test/**/*.test.ts"] }
 }

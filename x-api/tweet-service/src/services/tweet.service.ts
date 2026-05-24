@@ -17,9 +17,9 @@ export class NotLikedError extends Error {
 }
 
 export interface CreateTweetInput {
-    content:          string;
-    mediaUrls?:       string[];
-    replyToTweetId?:  string | null;
+    content: string;
+    mediaUrls?: string[];
+    replyToTweetId?: string | null;
 }
 
 export const createTweet = async (authorId: string, input: CreateTweetInput): Promise<Tweet> => {
@@ -55,7 +55,7 @@ export const likeTweet = async (userId: string, tweetId: string): Promise<void> 
     if (already) throw new AlreadyLikedError("Already liked this tweet");
 
     await repo.insertLike(userId, tweetId);
-    await producer.publishTweetLiked({ tweetId, userId });
+    await producer.publishTweetLiked({ tweetId, userId, targetUserId: tweet.authorId! });
 };
 
 export const unlikeTweet = async (userId: string, tweetId: string): Promise<void> => {

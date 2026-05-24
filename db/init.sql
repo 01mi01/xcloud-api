@@ -27,3 +27,15 @@ CREATE TABLE IF NOT EXISTS follows (
 );
 
 -- tweets and likes live in Cassandra (see db/cassandra-init.cql)
+
+
+-- Notifications table (used by Notification Service)
+CREATE TABLE IF NOT EXISTS notifications (
+    id                UUID PRIMARY KEY,
+    recipient_user_id UUID        NOT NULL,
+    actor_user_id     UUID        NOT NULL,
+    type              VARCHAR(50) NOT NULL,
+    ref_tweet_id      UUID,
+    read              BOOLEAN     NOT NULL DEFAULT false,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
