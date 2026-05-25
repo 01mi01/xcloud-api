@@ -2,6 +2,22 @@
 
 Plataforma de red social en la nube inspirada en la arquitectura de X/Twitter. Implementada como un sistema de microservicios con comunicación asíncrona via Kafka, caché en Redis y búsqueda full-text con Elasticsearch.
 
+## Materia
+Arquitectura en la Nube y Microservicios - Maestría Full Stack Development - UCB 2026
+
+## Equipo
+
+| Rol | Nombre |
+|---|---|
+| Infraestructura | Flores Velasquez Maritza Karen |
+| AuthN/AuthZ — Cognito | De los Rios Aliaga Mijaelha |
+| Arquitectura técnica | Machaca Lamas Sergio Alejandro |
+| Desarrollo | Mamani Poma Alexander Manuel |
+
+## Docente
+
+Phd. Jhesser Guzman
+
 ## Arquitectura
 
 El sistema está compuesto por **7 microservicios** independientes, cada uno con su propia responsabilidad:
