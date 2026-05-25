@@ -15,7 +15,7 @@ const GROUP_ID = "fanout-service-group";
  * al feed cache de cada follower.
  */
 export const startTweetCreatedConsumer = async (): Promise<void> => {
-    const consumer = kafka.consumer({ groupId: GROUP_ID });
+    const consumer = kafka.consumer({ groupId: GROUP_ID, sessionTimeout: 30000 });
 
     await consumer.connect();
     console.log(`[fanout-service] Kafka consumer connected, group: ${GROUP_ID}`);

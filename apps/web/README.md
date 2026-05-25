@@ -1,73 +1,98 @@
-# React + TypeScript + Vite
+# xcloud Web Client
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+SPA en React 18 + TypeScript + Vite que consume los 7 microservicios de `x-api/`.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- React 18, React Router 6
+- Vite 5 (dev server con proxy)
+- TypeScript estricto
+- Sin librería de estado externa: `AuthContext` + hooks locales
 
-## React Compiler
+## Setup
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Abrir [http://localhost:5173](http://localhost:5173).
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### Variables de entorno
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+`apps/web/.env`:
+
 ```
+VITE_API_BASE_URL=/api
+```
+
+El cliente nunca llama directamente a `http://localhost:300X`. Todas las peticiones pasan por el proxy de Vite, que reescribe `/api/v1/<service>/*` → `http://localhost:<port>/v1/<service>/*`.
+
+## Proxy de Vite
+
+Configurado en `vite.config.ts`. Mapeo:
+
+| Path frontend | Backend |
+|---|---|
+| `/api/v1/auth/*` | `http://localhost:3000/v1/auth/*` |
+| `/api/v1/users/*` | `http://localhost:3001/v1/users/*` |
+| `/api/v1/tweets/*` | `http://localhost:3002/v1/tweets/*` |
+| `/api/v1/feed/*` | `http://localhost:3003/v1/feed/*` |
+| `/api/v1/notifications/*` | `http://localhost:3004/v1/notifications/*` |
+| `/api/v1/search/*` | `http://localhost:3005/v1/search/*` |
+
+Para que la app funcione end-to-end **todos** los servicios deben estar arriba — ver el [README principal](../../README.md).
+
+## Estructura
+
+```
+src/
+├── api/                    # Capa HTTP (un módulo por servicio)
+│   ├── client.ts           # apiFetch + ApiError + token storage
+│   ├── auth.ts
+│   ├── users.ts
+│   ├── tweets.ts
+│   ├── feed.ts
+│   ├── notifications.ts
+│   └── hydrate.ts          # RawTweet[] → Tweet[] resolviendo authors
+├── context/
+│   └── AuthContext.tsx     # status: "loading" | "authed" | "anon"
+├── components/
+│   ├── ProtectedRoute.tsx
+│   ├── layout/
+│   └── tweet/              # TweetComposer, TweetCard
+├── pages/                  # Login, Register, Home, Search, ...
+└── types/index.ts          # User, RawTweet, Tweet, AuthIdentity
+```
+
+## Flujo de autenticación
+
+1. `POST /v1/auth/login` → recibe `{ token, userId }`
+2. Token guardado en `localStorage` bajo la clave `xcloud_token`
+3. `AuthContext` decodifica el JWT para obtener el `handle` (claim `username`) y llama a `GET /v1/users/:handle` para hidratar el perfil
+4. Todas las llamadas posteriores envían `Authorization: Bearer <token>` automáticamente (ver `api/client.ts`)
+
+`ProtectedRoute` espera a `status !== "loading"` y redirige a `/login` si el estado es `"anon"`.
+
+## Hidratación de tweets
+
+El backend devuelve tweets con `authorId` pero sin el objeto `author`. `hydrateTweets()` en `api/hydrate.ts`:
+
+1. Recolecta los `authorId` únicos del batch
+2. Llama en paralelo a `GET /v1/users/by-id/:userId` para cada uno
+3. Devuelve `Tweet[]` con el campo `author: User` resuelto
+4. Si una petición falla, sustituye por un `User` placeholder en lugar de romper el render
+
+## Scripts
+
+```bash
+npm run dev      # Vite dev server (HMR)
+npm run build    # Build producción → dist/
+npm run preview  # Preview del build
+npm run lint     # ESLint
+```
+
+## Notas
+
+- El JWT expira a las 8h; cuando una petición devuelve 401, `apiFetch` lanza un `ApiError` con `status === 401` y el código que lo recibe debe llamar a `logout()`.
+- Los flags `liked` / `retweeted` por viewer aún no están expuestos por el backend; el cliente los inicializa a `false`.

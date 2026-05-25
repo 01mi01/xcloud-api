@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { mockCurrentUser } from "../../data/mockData";
+import { useAuth } from "../../context/AuthContext";
 import Avatar from "../common/Avatar";
 import styles from "./LeftSidebar.module.css";
 
@@ -53,7 +53,14 @@ const navItems = [
 
 function LeftSidebar() {
   const navigate = useNavigate();
-  const user = mockCurrentUser;
+  const { identity, profile, logout } = useAuth();
+  const displayName = profile?.displayName ?? identity?.handle ?? identity?.email ?? "You";
+  const handle = profile?.handle ?? identity?.handle ?? "";
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
 
   return (
     <aside className={styles.sidebar}>
@@ -91,10 +98,17 @@ function LeftSidebar() {
       <div className={styles.userPill}>
         <Avatar size={40} />
         <div className={styles.userInfo}>
-          <span className={styles.displayName}>{user.displayName}</span>
-          <span className={styles.handle}>@{user.handle}</span>
+          <span className={styles.displayName}>{displayName}</span>
+          <span className={styles.handle}>{handle ? `@${handle}` : ""}</span>
         </div>
-        <span className={styles.dots}>···</span>
+        <button
+          className={styles.dots}
+          onClick={handleLogout}
+          title="Sign out"
+          style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", font: "inherit" }}
+        >
+          ···
+        </button>
       </div>
 
     </aside>

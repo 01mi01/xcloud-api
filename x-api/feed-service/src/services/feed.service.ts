@@ -41,7 +41,10 @@ export const getFeed = async (
     } else {
         // ── Paso 2: Cache MISS → reconstruir desde DB ────
         const followingIds = await dbRepo.getFollowingIds(userId);
-        const allTweetIds  = await dbRepo.rebuildFeedFromDb(followingIds, REBUILD_LIMIT);
+        // Incluir al propio usuario para que vea sus propios tweets en su feed
+        // (no se requiere que se siga a sí mismo en la tabla follows).
+        const authorIds   = Array.from(new Set([userId, ...followingIds]));
+        const allTweetIds = await dbRepo.rebuildFeedFromDb(authorIds, REBUILD_LIMIT);
 
         // Guardar en Redis para próximas lecturas
         await cacheRepo.setFeedTweetIds(userId, allTweetIds);

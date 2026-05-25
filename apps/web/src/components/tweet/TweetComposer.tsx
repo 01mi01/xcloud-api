@@ -1,5 +1,7 @@
 import { useState, useRef } from "react";
-import { mockCurrentUser } from "../../data/mockData";
+import * as tweetsApi from "../../api/tweets";
+import { ApiError } from "../../api/client";
+import type { RawTweet } from "../../types";
 import Avatar from "../common/Avatar";
 import styles from "./TweetComposer.module.css";
 
@@ -8,21 +10,37 @@ const MAX_CHARS = 280;
 // Common emojis for the picker
 const EMOJIS = ["😀","😂","😍","🔥","👍","❤️","🎉","😎","🤔","😢","🚀","✨","💯","🙌","😅","👀","💀","🥹","😭","🫡"];
 
-function TweetComposer() {
+interface Props {
+  onTweetCreated?: (tweet: RawTweet) => void;
+}
+
+function TweetComposer({ onTweetCreated }: Props) {
   const [content, setContent] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const [showEmoji, setShowEmoji] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const user = mockCurrentUser;
   const remaining = MAX_CHARS - content.length;
   const isOverLimit = remaining < 0;
   const isEmpty = content.trim().length === 0 && images.length === 0;
 
-  const handlePost = () => {
-    if (isEmpty || isOverLimit) return;
-    setContent("");
-    setImages([]);
-    setShowEmoji(false);
+  const handlePost = async () => {
+    if (isEmpty || isOverLimit || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const { tweet } = await tweetsApi.createTweet({ content });
+      onTweetCreated?.(tweet);
+      setContent("");
+      setImages([]);
+      setShowEmoji(false);
+    } catch (err) {
+      if (err instanceof ApiError) setError(err.message);
+      else setError("Failed to post.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleEmoji = (emoji: string) => {
@@ -116,12 +134,14 @@ function TweetComposer() {
                 {remaining}
               </span>
             )}
-            <button className={styles.postBtn} onClick={handlePost} disabled={isEmpty || isOverLimit}>
-              Post
+            <button className={styles.postBtn} onClick={handlePost} disabled={isEmpty || isOverLimit || submitting}>
+              {submitting ? "Posting…" : "Post"}
             </button>
           </div>
 
         </div>
+
+        {error && <p style={{ color: "#f4212e", fontSize: 14, marginTop: 8 }}>{error}</p>}
 
       </div>
     </div>

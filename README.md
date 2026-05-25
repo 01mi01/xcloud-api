@@ -120,6 +120,16 @@ cd x-api/notification-service && npm install && npm run dev
 cd x-api/search-service && npm install && npm run dev
 ```
 
+### 6. Arrancar el cliente web (opcional)
+
+El SPA en `apps/web/` consume todos los servicios via un proxy de Vite (`/api/v1/<service>/*` → `http://localhost:<port>/v1/<service>/*`).
+
+```bash
+cd apps/web && npm install && npm run dev
+```
+
+Abrir [http://localhost:5173](http://localhost:5173). El proxy y la `VITE_API_BASE_URL=/api` están configurados en `apps/web/vite.config.ts` y `apps/web/.env`. Ver [apps/web/README.md](apps/web/README.md) para detalles.
+
 ## Nota importante — PostgreSQL local
 
 Si tienes PostgreSQL instalado localmente en tu máquina, puede generar conflicto con el contenedor Docker en el puerto 5432. Solución: detener el servicio local antes de ejecutar el proyecto:
@@ -144,9 +154,12 @@ Stop-Service postgresql-x64-17
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
 | GET | `/v1/users/:handle` | No | Obtener perfil por handle |
+| GET | `/v1/users/by-id/:userId` | No | Obtener perfil por userId (usado por hidratación de tweets) |
 | PUT | `/v1/users/me` | Bearer | Actualizar perfil propio |
 | POST | `/v1/users/:userId/follow` | Bearer | Seguir a un usuario |
 | DELETE | `/v1/users/:userId/follow` | Bearer | Dejar de seguir |
+
+> Nota: al registrarse via Auth Service se crea automáticamente la fila correspondiente en la tabla `users` (transacción atómica con `auth_users`), por lo que el perfil queda disponible inmediatamente sin necesidad de un `PUT /v1/users/me` previo.
 
 ### Tweet Service (puerto 3002)
 

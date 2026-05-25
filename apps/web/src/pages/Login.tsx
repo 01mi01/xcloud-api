@@ -1,18 +1,32 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { ApiError } from "../api/client";
+import { useAuth } from "../context/AuthContext";
 import styles from "./Login.module.css";
 
 const X_PATH = "M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z";
 
 function Login() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  // Fake login — navigate to home with no real auth yet
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    navigate("/home");
+    setError("");
+    setSubmitting(true);
+    try {
+      await login(email, password);
+      navigate("/home", { replace: true });
+    } catch (err) {
+      if (err instanceof ApiError) setError(err.message);
+      else setError("Unable to sign in. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -28,13 +42,13 @@ function Login() {
           <div className={styles.inputWrapper}>
             <input
               className={styles.input}
-              type="text"
+              type="email"
               placeholder=" "
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
             />
-            <label className={styles.inputLabel}>Email or username</label>
+            <label className={styles.inputLabel}>Email</label>
           </div>
 
           <div className={styles.inputWrapper}>
@@ -49,8 +63,10 @@ function Login() {
             <label className={styles.inputLabel}>Password</label>
           </div>
 
-          <button className={styles.btnPrimary} type="submit">
-            Sign in
+          {error && <p className={styles.errorText}>{error}</p>}
+
+          <button className={styles.btnPrimary} type="submit" disabled={submitting}>
+            {submitting ? "Signing in…" : "Sign in"}
           </button>
 
         </form>

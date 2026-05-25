@@ -5,7 +5,7 @@ const TOPIC    = "user.followed";
 const GROUP_ID = "notification-service-follow-group";
 
 export const startFollowConsumer = async (): Promise<void> => {
-    const consumer = kafka.consumer({ groupId: GROUP_ID });
+    const consumer = kafka.consumer({ groupId: GROUP_ID, sessionTimeout: 30000 });
 
     await consumer.connect();
     await consumer.subscribe({ topic: TOPIC, fromBeginning: false });

@@ -26,10 +26,29 @@ export const registerUser = async (handle: string, email: string, password: stri
     const userId       = uuidv4();
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-    await pool.query(
-        "INSERT INTO auth_users (user_id, handle, email, password_hash, role) VALUES ($1, $2, $3, $4, $5)",
-        [userId, handle, email, passwordHash, "user"]
-    );
+    // Create both the credential record (auth_users) and the public profile
+    // row (users) in a single transaction so the user-service can resolve the
+    // profile by handle immediately after registration.
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+        await client.query(
+            "INSERT INTO auth_users (user_id, handle, email, password_hash, role) VALUES ($1, $2, $3, $4, $5)",
+            [userId, handle, email, passwordHash, "user"]
+        );
+        await client.query(
+            `INSERT INTO users (user_id, handle, display_name)
+             VALUES ($1, $2, $2)
+             ON CONFLICT (user_id) DO NOTHING`,
+            [userId, handle]
+        );
+        await client.query("COMMIT");
+    } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+    } finally {
+        client.release();
+    }
 
     return userId;
 };

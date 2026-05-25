@@ -18,6 +18,12 @@ export const getByHandle = async (handle: string): Promise<User> => {
     return user;
 };
 
+export const getById = async (userId: string): Promise<User> => {
+    const user = await repo.findById(userId);
+    if (!user) throw new UserNotFoundError(`User '${userId}' not found`);
+    return user;
+};
+
 export const updateProfile = async (userId: string, handle: string, fields: UpdateFields): Promise<User> => {
     await repo.upsert(userId, handle);
     const user = await repo.update(userId, fields);

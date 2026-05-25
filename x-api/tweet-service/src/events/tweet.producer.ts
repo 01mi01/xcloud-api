@@ -3,7 +3,7 @@ import { Tweet } from "../models/tweet.model";
 
 const kafka = new Kafka({
     clientId: "tweet-service",
-    brokers: (process.env.KAFKA_BROKERS || "localhost:9092").split(","),
+    brokers: (process.env.KAFKA_BROKERS || "localhost:9094").split(","),
     retry: { initialRetryTime: 300, retries: 5 },
 });
 

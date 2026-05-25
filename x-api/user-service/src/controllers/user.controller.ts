@@ -16,6 +16,16 @@ export const getUser = async (req: Request, res: Response): Promise<void> => {
     }
 };
 
+export const getUserById = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const user = await svc.getById(req.params.userId);
+        res.status(200).json(user);
+    } catch (err) {
+        if ((err as Error).name === "UserNotFoundError") { res.status(404).json({ message: (err as Error).message }); return; }
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
 export const updateMe = async (req: Request, res: Response): Promise<void> => {
     const { displayName, bio, avatarUrl } = req.body as { displayName?: string; bio?: string; avatarUrl?: string };
 

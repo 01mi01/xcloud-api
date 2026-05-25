@@ -1,4 +1,5 @@
 import { useState } from "react";
+import * as tweetsApi from "../../api/tweets";
 import type { Tweet } from "../../types";
 import Avatar from "../common/Avatar";
 import styles from "./TweetCard.module.css";
@@ -27,9 +28,19 @@ function TweetCard({ tweet }: Props) {
   const [retweeted, setRetweeted] = useState(tweet.retweeted);
   const [retweetCount, setRetweetCount] = useState(tweet.retweetCount);
 
-  const handleLike = () => {
-    setLiked((prev) => !prev);
-    setLikesCount((prev) => (liked ? prev - 1 : prev + 1));
+  const handleLike = async () => {
+    const wasLiked = liked;
+    // Optimistic update
+    setLiked(!wasLiked);
+    setLikesCount((prev) => (wasLiked ? prev - 1 : prev + 1));
+    try {
+      if (wasLiked) await tweetsApi.unlikeTweet(tweet.tweetId);
+      else await tweetsApi.likeTweet(tweet.tweetId);
+    } catch {
+      // Revert on failure
+      setLiked(wasLiked);
+      setLikesCount((prev) => (wasLiked ? prev + 1 : prev - 1));
+    }
   };
 
   const handleRetweet = () => {

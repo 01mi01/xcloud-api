@@ -24,18 +24,17 @@ export const processTweetCreated = async (event: TweetCreatedEvent): Promise<voi
     // Paso 1: Obtener followers del autor
     const followerIds = await followerRepo.getFollowerIds(authorId);
 
-    if (followerIds.length === 0) {
-        console.log(`[fanout-service] No followers for author ${authorId}, skipping`);
-        return;
-    }
+    // El autor siempre ve sus propios tweets en su feed, aunque no se siga
+    // a sí mismo. Incluimos su userId en la lista de destinos del fan-out.
+    const recipients = Array.from(new Set([authorId, ...followerIds]));
 
-    console.log(`[fanout-service] Fan-out tweet ${tweetId} to ${followerIds.length} followers`);
+    console.log(`[fanout-service] Fan-out tweet ${tweetId} to ${recipients.length} recipients (author + ${followerIds.length} followers)`);
 
-    // Paso 2: Escribir en el feed cache de cada follower
+    // Paso 2: Escribir en el feed cache de cada destinatario
     // En paralelo para mejor performance
     await Promise.all(
-        followerIds.map((followerId) =>
-            feedCacheRepo.prependToFeed(followerId, tweetId)
+        recipients.map((recipientId) =>
+            feedCacheRepo.prependToFeed(recipientId, tweetId)
         )
     );
 
