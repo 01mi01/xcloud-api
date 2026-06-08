@@ -23,7 +23,8 @@ interface EcsStackProps extends cdk.StackProps {
   messaging:  MessagingStack;
   storage:    StorageStack;
   auth:       AuthStack;
-  search:     SearchStack;
+  /** Null when envConfig.enableSearch is false (e.g. beta). */
+  search:     SearchStack | null;
 }
 
 export class EcsStack extends cdk.Stack {
@@ -31,6 +32,7 @@ export class EcsStack extends cdk.Stack {
     super(scope, id, props);
 
     const { envConfig, vpc, alb, database, cache, messaging, storage, auth, search } = props;
+    const sqs = messaging.sqs;
 
     // ── ECS Cluster ────────────────────────────────────────────────────
     const cluster = new ecs.Cluster(this, 'Cluster', {
@@ -39,9 +41,14 @@ export class EcsStack extends cdk.Stack {
       containerInsights:  true,
     });
 
-    // ── Shared ALB listener ────────────────────────────────────────────
-    const listener = alb.addListener('HttpsListener', {
-      port: 443,
+    // ── Shared ALB listener (HTTP :80) ─────────────────────────────────
+    // Created here (NOT via alb.addListener in the gateway stack) so the
+    // listener, target groups and rules all live in THIS stack — avoiding a
+    // cross-stack dependency cycle with the gateway stack. Beta serves plain
+    // HTTP; HTTPS (443 + ACM) is a later gamma/prod concern.
+    const listener = new elbv2.ApplicationListener(this, 'HttpListener', {
+      loadBalancer: alb,
+      port: 80,
       open: true,
       defaultAction: elbv2.ListenerAction.fixedResponse(404, {
         contentType: 'text/plain',
@@ -49,15 +56,37 @@ export class EcsStack extends cdk.Stack {
       }),
     });
 
-    // ── Helper: SQS grant ──────────────────────────────────────────────
-    const sqsReadWrite = (queues: cdk.aws_sqs.IQueue[]) =>
+    // ── IAM helpers ────────────────────────────────────────────────────
+    const sqsAccess = (queues: cdk.aws_sqs.IQueue[]) =>
       queues.map(q => new iam.PolicyStatement({
         actions:   ['sqs:SendMessage', 'sqs:ReceiveMessage', 'sqs:DeleteMessage', 'sqs:GetQueueAttributes'],
         resources: [q.queueArn],
       }));
+    const snsPublish = (topicArn: string) =>
+      new iam.PolicyStatement({ actions: ['sns:Publish'], resources: [topicArn] });
 
-    // ── auth-service ───────────────────────────────────────────────────
-    new MicroserviceConstruct(this, 'AuthService', {
+    // Declare the SG ingress rules in THIS (ecs) stack via CfnSecurityGroupIngress,
+    // rather than dbSG.addIngressRule(...) which would place the rule in the
+    // database/cache stack and create a cross-stack dependency cycle.
+    const rdsIngressFrom = (svc: MicroserviceConstruct, id: string) =>
+      new ec2.CfnSecurityGroupIngress(this, `RdsIngress-${id}`, {
+        groupId:               database.rds.securityGroup.securityGroupId,
+        ipProtocol:            'tcp',
+        fromPort:              5432,
+        toPort:                5432,
+        sourceSecurityGroupId: svc.service.connections.securityGroups[0].securityGroupId,
+      });
+    const redisIngressFrom = (svc: MicroserviceConstruct, id: string) =>
+      new ec2.CfnSecurityGroupIngress(this, `RedisIngress-${id}`, {
+        groupId:               cache.redis.securityGroup.securityGroupId,
+        ipProtocol:            'tcp',
+        fromPort:              6379,
+        toPort:                6379,
+        sourceSecurityGroupId: svc.service.connections.securityGroups[0].securityGroupId,
+      });
+
+    // ── auth-service (PostgreSQL + Cognito) ────────────────────────────
+    const authSvc = new MicroserviceConstruct(this, 'AuthService', {
       cluster,
       serviceName:         'auth-service',
       containerPort:       SERVICE_PORTS['auth-service'],
@@ -65,9 +94,14 @@ export class EcsStack extends cdk.Stack {
       listenerPathPattern: '/v1/auth*',
       listenerPriority:    10,
       environment: {
+        DB_HOST:              database.rds.instance.instanceEndpoint.hostname,
+        DB_NAME:              'xcloud_users',
         COGNITO_USER_POOL_ID: auth.cognito.userPool.userPoolId,
         COGNITO_CLIENT_ID:    auth.cognito.userPoolClient.userPoolClientId,
         AWS_REGION:           this.region,
+      },
+      secrets: {
+        DB_SECRET: ecs.Secret.fromSecretsManager(database.rds.credentials),
       },
       taskPolicies: [
         new iam.PolicyStatement({
@@ -77,8 +111,9 @@ export class EcsStack extends cdk.Stack {
       ],
       desiredCount: envConfig.taskCount,
     });
+    rdsIngressFrom(authSvc, 'auth');
 
-    // ── user-service ───────────────────────────────────────────────────
+    // ── user-service (publishes user.followed) ─────────────────────────
     const userSvc = new MicroserviceConstruct(this, 'UserService', {
       cluster,
       serviceName:         'user-service',
@@ -87,22 +122,20 @@ export class EcsStack extends cdk.Stack {
       listenerPathPattern: '/v1/users*',
       listenerPriority:    20,
       environment: {
-        DB_HOST:     database.rds.instance.instanceEndpoint.hostname,
-        DB_NAME:     'xcloud_users',
-        AWS_REGION:  this.region,
+        DB_HOST:                database.rds.instance.instanceEndpoint.hostname,
+        DB_NAME:                'xcloud_users',
+        FOLLOW_EVENT_QUEUE_URL: sqs.followEvent.queueUrl,
+        AWS_REGION:             this.region,
       },
       secrets: {
         DB_SECRET: ecs.Secret.fromSecretsManager(database.rds.credentials),
       },
-      taskPolicies: sqsReadWrite([messaging.sqs.followEvent]),
+      taskPolicies: sqsAccess([sqs.followEvent]),
       desiredCount: envConfig.taskCount,
     });
-    database.rds.securityGroup.addIngressRule(
-      userSvc.service.connections.securityGroups[0],
-      cdk.aws_ec2.Port.tcp(5432),
-    );
+    rdsIngressFrom(userSvc, 'user');
 
-    // ── tweet-service ──────────────────────────────────────────────────
+    // ── tweet-service (publishes tweet.created via SNS, tweet.liked via SQS) ──
     new MicroserviceConstruct(this, 'TweetService', {
       cluster,
       serviceName:         'tweet-service',
@@ -112,14 +145,14 @@ export class EcsStack extends cdk.Stack {
       listenerPriority:    30,
       environment: {
         CASSANDRA_CONTACT_POINTS: `cassandra.${this.region}.amazonaws.com`,
+        TWEET_CREATED_TOPIC_ARN:  sqs.tweetCreatedTopic.topicArn,
+        LIKE_EVENT_QUEUE_URL:     sqs.likeEvent.queueUrl,
         AWS_REGION:               this.region,
       },
       taskPolicies: [
-        ...sqsReadWrite([messaging.sqs.tweetCreated, messaging.sqs.tweetIndex]),
-        new iam.PolicyStatement({
-          actions:   ['cassandra:*'],
-          resources: ['*'],
-        }),
+        snsPublish(sqs.tweetCreatedTopic.topicArn),
+        ...sqsAccess([sqs.likeEvent]),
+        new iam.PolicyStatement({ actions: ['cassandra:*'], resources: ['*'] }),
       ],
       desiredCount: envConfig.taskCount,
     });
@@ -139,12 +172,9 @@ export class EcsStack extends cdk.Stack {
       },
       desiredCount: envConfig.taskCount,
     });
-    cache.redis.securityGroup.addIngressRule(
-      feedSvc.service.connections.securityGroups[0],
-      cdk.aws_ec2.Port.tcp(6379),
-    );
+    redisIngressFrom(feedSvc, 'feed');
 
-    // ── fanout-service ─────────────────────────────────────────────────
+    // ── fanout-service (consumes tweet.created via its own SQS queue) ───
     const fanoutSvc = new MicroserviceConstruct(this, 'FanoutService', {
       cluster,
       serviceName:         'fanout-service',
@@ -153,17 +183,14 @@ export class EcsStack extends cdk.Stack {
       listenerPathPattern: '/v1/fanout*',
       listenerPriority:    50,
       environment: {
-        TWEET_CREATED_QUEUE_URL: messaging.sqs.tweetCreated.queueUrl,
-        REDIS_HOST:              cache.redis.cluster.attrRedisEndpointAddress,
-        AWS_REGION:              this.region,
+        FANOUT_QUEUE_URL: sqs.fanoutQueue.queueUrl,
+        REDIS_HOST:       cache.redis.cluster.attrRedisEndpointAddress,
+        AWS_REGION:       this.region,
       },
-      taskPolicies: sqsReadWrite([messaging.sqs.tweetCreated]),
+      taskPolicies: sqsAccess([sqs.fanoutQueue]),
       desiredCount: envConfig.taskCount,
     });
-    cache.redis.securityGroup.addIngressRule(
-      fanoutSvc.service.connections.securityGroups[0],
-      cdk.aws_ec2.Port.tcp(6379),
-    );
+    redisIngressFrom(fanoutSvc, 'fanout');
 
     // ── media-service ──────────────────────────────────────────────────
     new MicroserviceConstruct(this, 'MediaService', {
@@ -186,7 +213,7 @@ export class EcsStack extends cdk.Stack {
       desiredCount: envConfig.taskCount,
     });
 
-    // ── notification-service ───────────────────────────────────────────
+    // ── notification-service (consumes tweet.liked + user.followed) ────
     new MicroserviceConstruct(this, 'NotificationService', {
       cluster,
       serviceName:         'notification-service',
@@ -195,35 +222,37 @@ export class EcsStack extends cdk.Stack {
       listenerPathPattern: '/v1/notifications*',
       listenerPriority:    70,
       environment: {
-        LIKE_QUEUE_URL:   messaging.sqs.likeEvent.queueUrl,
-        FOLLOW_QUEUE_URL: messaging.sqs.followEvent.queueUrl,
-        AWS_REGION:       this.region,
+        LIKE_EVENT_QUEUE_URL:   sqs.likeEvent.queueUrl,
+        FOLLOW_EVENT_QUEUE_URL: sqs.followEvent.queueUrl,
+        AWS_REGION:             this.region,
       },
-      taskPolicies: sqsReadWrite([messaging.sqs.likeEvent, messaging.sqs.followEvent]),
+      taskPolicies: sqsAccess([sqs.likeEvent, sqs.followEvent]),
       desiredCount: envConfig.taskCount,
     });
 
-    // ── search-service ─────────────────────────────────────────────────
-    new MicroserviceConstruct(this, 'SearchService', {
-      cluster,
-      serviceName:         'search-service',
-      containerPort:       SERVICE_PORTS['search-service'],
-      listener,
-      listenerPathPattern: '/v1/search*',
-      listenerPriority:    80,
-      environment: {
-        OPENSEARCH_ENDPOINT: search.domain.domainEndpoint,
-        TWEET_INDEX_QUEUE_URL: messaging.sqs.tweetIndex.queueUrl,
-        AWS_REGION:          this.region,
-      },
-      taskPolicies: [
-        ...sqsReadWrite([messaging.sqs.tweetIndex]),
-        new iam.PolicyStatement({
-          actions:   ['es:ESHttpGet', 'es:ESHttpPost', 'es:ESHttpPut', 'es:ESHttpDelete'],
-          resources: [`${search.domain.domainArn}/*`],
-        }),
-      ],
-      desiredCount: envConfig.taskCount,
-    });
+    // ── search-service (only when search is enabled) ───────────────────
+    if (search) {
+      new MicroserviceConstruct(this, 'SearchService', {
+        cluster,
+        serviceName:         'search-service',
+        containerPort:       SERVICE_PORTS['search-service'],
+        listener,
+        listenerPathPattern: '/v1/search*',
+        listenerPriority:    80,
+        environment: {
+          OPENSEARCH_ENDPOINT:   search.domain.domainEndpoint,
+          TWEET_INDEX_QUEUE_URL: sqs.tweetIndex.queueUrl,
+          AWS_REGION:            this.region,
+        },
+        taskPolicies: [
+          ...sqsAccess([sqs.tweetIndex]),
+          new iam.PolicyStatement({
+            actions:   ['es:ESHttpGet', 'es:ESHttpPost', 'es:ESHttpPut', 'es:ESHttpDelete'],
+            resources: [`${search.domain.domainArn}/*`],
+          }),
+        ],
+        desiredCount: envConfig.taskCount,
+      });
+    }
   }
 }

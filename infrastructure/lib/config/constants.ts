@@ -11,15 +11,17 @@ export const SERVICES = [
 
 export type ServiceName = typeof SERVICES[number];
 
+// Must match each service's default *_PORT (see apps/services/*/src/index.ts),
+// because the container health check + ALB target group use this port.
 export const SERVICE_PORTS: Record<ServiceName, number> = {
-  'auth-service':         3001,
-  'user-service':         3002,
-  'tweet-service':        3003,
-  'feed-service':         3004,
-  'fanout-service':       3005,
+  'auth-service':         3000,
+  'user-service':         3001,
+  'tweet-service':        3002,
+  'feed-service':         3003,
+  'notification-service': 3004,
+  'search-service':       3005,
   'media-service':        3006,
-  'notification-service': 3007,
-  'search-service':       3008,
+  'fanout-service':       3007,
 };
 
 /** Default Fargate task sizes per service. Override per environment via context. */
@@ -29,11 +31,17 @@ export const FARGATE_DEFAULTS = {
   desiredCount: 1,
 } as const;
 
-export const SQS_QUEUES = {
+// tweet.created fans out (fanout + search) via an SNS topic with two SQS
+// subscriptions. tweet.liked / user.followed are 1:1 SQS queues.
+export const SNS_TOPICS = {
   TWEET_CREATED: 'xcloud-tweet-created',
-  LIKE_EVENT:    'xcloud-like-event',
-  FOLLOW_EVENT:  'xcloud-follow-event',
-  TWEET_INDEX:   'xcloud-tweet-index',
+} as const;
+
+export const SQS_QUEUES = {
+  FANOUT:       'xcloud-fanout',        // subscribes to tweet.created (SNS)
+  TWEET_INDEX:  'xcloud-tweet-index',   // subscribes to tweet.created (SNS)
+  LIKE_EVENT:   'xcloud-like-event',    // tweet.liked  (tweet -> notification)
+  FOLLOW_EVENT: 'xcloud-follow-event',  // user.followed (user -> notification)
 } as const;
 
 export const APP_PREFIX = 'xcloud';

@@ -37,7 +37,9 @@ const database   = new DatabaseStack  (app, `${prefix}-database`,   { ...stackPr
 const cache      = new CacheStack     (app, `${prefix}-cache`,      { ...stackProps, vpc: networking.vpc });
 const messaging  = new MessagingStack (app, `${prefix}-messaging`,  stackProps);
 const storage    = new StorageStack   (app, `${prefix}-storage`,    stackProps);
-const search     = new SearchStack    (app, `${prefix}-search`,     { ...stackProps, vpc: networking.vpc });
+const search     = envConfig.enableSearch
+  ? new SearchStack(app, `${prefix}-search`, { ...stackProps, vpc: networking.vpc })
+  : null;
 const gateway    = new GatewayStack   (app, `${prefix}-gateway`,    { ...stackProps, vpc: networking.vpc });
 
 new EcsStack(app, `${prefix}-ecs`, {

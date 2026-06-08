@@ -14,6 +14,8 @@ export interface EnvironmentConfig {
   opensearchInstanceType: string;
   /** Whether to enable deletion protection on stateful resources. */
   deletionProtection: boolean;
+  /** Provision OpenSearch + search-service. Disabled on beta to save ~$25/mo. */
+  enableSearch: boolean;
 }
 
 export const environments: Record<string, EnvironmentConfig> = {
@@ -27,6 +29,7 @@ export const environments: Record<string, EnvironmentConfig> = {
     cacheNodeType: 'cache.t3.micro',
     opensearchInstanceType: 't3.small.search',
     deletionProtection: false,
+    enableSearch: false,
   },
   gamma: {
     name: 'gamma',
@@ -38,6 +41,7 @@ export const environments: Record<string, EnvironmentConfig> = {
     cacheNodeType: 'cache.t3.small',
     opensearchInstanceType: 't3.medium.search',
     deletionProtection: true,
+    enableSearch: true,
   },
   prod: {
     name: 'prod',
@@ -49,5 +53,6 @@ export const environments: Record<string, EnvironmentConfig> = {
     cacheNodeType: 'cache.t3.medium',
     opensearchInstanceType: 'm5.large.search',
     deletionProtection: true,
+    enableSearch: true,
   },
 };

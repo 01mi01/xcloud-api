@@ -20,16 +20,10 @@ export class GatewayStack extends cdk.Stack {
       internetFacing:  true,
       loadBalancerName: `xcloud-${props.envConfig.name}`,
     });
-
-    // HTTP → HTTPS redirect
-    this.alb.addListener('HttpRedirect', {
-      port: 80,
-      defaultAction: elbv2.ListenerAction.redirect({
-        protocol:   'HTTPS',
-        port:       '443',
-        permanent:  true,
-      }),
-    });
+    // NOTE: the HTTP :80 listener is created in EcsStack (same stack as the
+    // services/target groups) to avoid a cross-stack dependency cycle. For beta
+    // we serve plain HTTP — HTTPS (443 + ACM cert + 80->443 redirect) is a
+    // gamma/prod concern, added later.
 
     new cdk.CfnOutput(this, 'AlbDnsName', { value: this.alb.loadBalancerDnsName });
   }

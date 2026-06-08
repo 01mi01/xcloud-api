@@ -15,9 +15,10 @@ export class MessagingStack extends cdk.Stack {
 
     this.sqs = new SqsConstruct(this, 'Sqs');
 
-    new cdk.CfnOutput(this, 'TweetCreatedQueueUrl', { value: this.sqs.tweetCreated.queueUrl });
-    new cdk.CfnOutput(this, 'TweetIndexQueueUrl',   { value: this.sqs.tweetIndex.queueUrl   });
-    new cdk.CfnOutput(this, 'LikeEventQueueUrl',    { value: this.sqs.likeEvent.queueUrl    });
-    new cdk.CfnOutput(this, 'FollowEventQueueUrl',  { value: this.sqs.followEvent.queueUrl  });
+    new cdk.CfnOutput(this, 'TweetCreatedTopicArn', { value: this.sqs.tweetCreatedTopic.topicArn });
+    new cdk.CfnOutput(this, 'FanoutQueueUrl',       { value: this.sqs.fanoutQueue.queueUrl });
+    new cdk.CfnOutput(this, 'TweetIndexQueueUrl',   { value: this.sqs.tweetIndex.queueUrl  });
+    new cdk.CfnOutput(this, 'LikeEventQueueUrl',    { value: this.sqs.likeEvent.queueUrl   });
+    new cdk.CfnOutput(this, 'FollowEventQueueUrl',  { value: this.sqs.followEvent.queueUrl });
   }
 }
