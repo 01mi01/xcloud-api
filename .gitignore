@@ -18,6 +18,7 @@ api-model/build/
 # cdk
 infrastructure/cdk.out/
 cdk.out/
+infrastructure/cdk.context.json
 
 # tests / coverage
 coverage/
