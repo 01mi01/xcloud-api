@@ -63,11 +63,10 @@ cd xcloud-api
 
 ### 2. Configurar variables de entorno
 
-Copiar el archivo de ejemplo:
+Copiar el archivo de ejemplo (un único `.env` en la raíz; todos los servicios lo leen):
 
 ```bash
 cp .env.example .env
-cp .env x-api/.env
 ```
 
 Contenido del `.env`:
@@ -105,30 +104,39 @@ docker compose ps
 
 ### 4. Instalar dependencias y arrancar servicios
 
-Abrir una terminal por cada servicio:
+Este es un monorepo con **npm workspaces**. Instalar todo una sola vez desde la raíz, y compilar el paquete compartido antes de arrancar los servicios:
 
 ```bash
-# Terminal 1 — Auth Service
-cd x-api/auth-service && npm install && npm run dev
-
-# Terminal 2 — User Service
-cd x-api/user-service && npm install && npm run dev
-
-# Terminal 3 — Tweet Service
-cd x-api/tweet-service && npm install && npm run dev
-
-# Terminal 4 — Feed Service
-cd x-api/feed-service && npm install && npm run dev
-
-# Terminal 5 — Fan-out Service
-cd x-api/fanout-service && npm install && npm run dev
-
-# Terminal 6 — Notification Service
-cd x-api/notification-service && npm install && npm run dev
-
-# Terminal 7 — Search Service
-cd x-api/search-service && npm install && npm run dev
+npm install                          # instala todos los workspaces
+npm run build -w packages/shared     # @xcloud/shared (lo consumen los servicios)
 ```
+
+Luego abrir una terminal por servicio (los servicios viven en `apps/services/`):
+
+```bash
+# Terminal 1 — Auth Service          (puerto 3000)
+cd apps/services/auth-service && npm run dev
+
+# Terminal 2 — User Service          (3001)
+cd apps/services/user-service && npm run dev
+
+# Terminal 3 — Tweet Service         (3002)
+cd apps/services/tweet-service && npm run dev
+
+# Terminal 4 — Feed Service          (3003)
+cd apps/services/feed-service && npm run dev
+
+# Terminal 5 — Fan-out Service       (worker + /health 3007)
+cd apps/services/fanout-service && npm run dev
+
+# Terminal 6 — Notification Service  (3004)
+cd apps/services/notification-service && npm run dev
+
+# Terminal 7 — Search Service        (3005)
+cd apps/services/search-service && npm run dev
+```
+
+> En local, la mensajería usa **Kafka** (vía `docker compose`). En AWS (`NODE_ENV=production`) los mismos servicios usan **SQS/SNS** — la conmutación es automática en `@xcloud/shared`.
 
 ### 5. Arrancar el cliente web (opcional)
 
@@ -268,13 +276,16 @@ Invoke-RestMethod -Method GET -Uri http://localhost:3004/v1/notifications -Heade
 
 ## Tests unitarios
 
-Cada servicio tiene tests con Jest y mocks:
+Cada servicio tiene tests con Jest y mocks. Ejecutar todos desde la raíz:
 
 ```bash
-cd x-api/feed-service && npm test
-cd x-api/fanout-service && npm test
-cd x-api/notification-service && npm test
-cd x-api/search-service && npm test
+npm test --workspaces --if-present
+```
+
+O uno individual:
+
+```bash
+cd apps/services/feed-service && npm test
 ```
 
 ## Infraestructura Docker
@@ -289,33 +300,48 @@ cd x-api/search-service && npm test
 
 ## Smithy API Model
 
-Los modelos Smithy en `x-api/model/` definen el contrato formal de la API. Para generar el OpenAPI spec:
+Los modelos Smithy en `api-model/model/` definen el contrato formal de la API. Para generar el OpenAPI spec:
 
 ```bash
-cd x-api
+cd api-model
 ./gradlew build
 ```
 
 Requiere Java 17+.
 
+## Infraestructura AWS (CDK)
+
+La carpeta `infrastructure/` contiene el IaC (AWS CDK) para desplegar en ECS Fargate. Para sintetizar las plantillas de **beta** (sin desplegar):
+
+```bash
+cd infrastructure
+npx cdk synth --context env=beta
+```
+
+Beta usa `enableSearch=false`, 1 NAT, 1 task por servicio (~$136/mes). Ver `docs/adr/` para las decisiones (SQS sobre MSK, ECS sobre EKS).
+
 ## Estructura del proyecto
 
 ```
-xcloud-api-main/
+xcloud-api/
+├── package.json                  # raíz de npm workspaces
+├── tsconfig.base.json
+├── docker-compose.yml            # infra local (Postgres, Cassandra, Redis, Kafka, ES)
 ├── .env.example
-├── docker-compose.yml
-├── db/
-│   ├── init.sql                    # Schema PostgreSQL
-│   └── cassandra-init.cql          # Schema Cassandra
+├── db/                           # init.sql (PostgreSQL) + cassandra-init.cql
+├── api-model/                    # Smithy + Gradle (genera OpenAPI)
 ├── apps/
-│   └── web/                        # Frontend React (Vite)
-└── x-api/
-    ├── model/                      # Smithy API definitions
-    ├── auth-service/               # Puerto 3000
-    ├── user-service/               # Puerto 3001
-    ├── tweet-service/              # Puerto 3002
-    ├── feed-service/               # Puerto 3003
-    ├── fanout-service/             # Kafka consumer (sin HTTP)
-    ├── notification-service/       # Puerto 3004
-    └── search-service/             # Puerto 3005
+│   ├── web/                      # Frontend React (Vite)
+│   └── services/
+│       ├── auth-service/         # 3000   user-service/ 3001   tweet-service/ 3002
+│       ├── feed-service/         # 3003   notification-service/ 3004   search-service/ 3005
+│       ├── media-service/        # 3006 (stub)
+│       └── fanout-service/       # worker + /health 3007
+├── packages/
+│   ├── shared/                   # @xcloud/shared (auth, mensajería Kafka/SQS, utils)
+│   ├── sdk-client/               # SDK Smithy (skeleton, generación diferida)
+│   └── sdk-server/               # SDK Smithy (skeleton, generación diferida)
+├── infrastructure/               # AWS CDK (ECS, RDS, ElastiCache, SQS/SNS, ...)
+├── k8s/                          # manifiestos Kubernetes (solo referencia, ver ADR-002)
+└── docs/                         # ADRs, runbooks, baseline de migración
 ```

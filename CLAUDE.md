@@ -4,101 +4,87 @@ Guidance for Claude Code when working in this repository.
 
 ## What this is
 
-**X(dot)com** — a Twitter/X clone built as a microservices system for the *Arquitectura en la Nube y Microservicios* course (Maestría Full Stack Development, UCB 2026). Async communication via Kafka, caching in Redis, full-text search in Elasticsearch. Each Docker container maps to an AWS-managed equivalent (RDS, Keyspaces, ElastiCache, MSK, OpenSearch).
+**X(dot)com** — a Twitter/X clone built as a microservices system for the *Arquitectura en la Nube y Microservicios* course (Maestría Full Stack Development, UCB 2026). It is a **cloud-ready npm-workspaces monorepo**: services run locally on Docker (Kafka/Redis/Cassandra/Elasticsearch) and deploy to AWS via CDK (ECS Fargate + RDS + ElastiCache + SQS/SNS + OpenSearch).
 
-The user-facing README (`README.md`) is the authoritative, detailed setup/usage doc — keep it in sync when changing ports, endpoints, env vars, or topics.
+The user-facing README (`README.md`) is the authoritative setup/usage doc — keep it in sync when changing ports, endpoints, env vars, or topics.
 
 ## Repository layout
 
-Monorepo with **no root `package.json`** — each service and app is installed/run independently.
+Monorepo with a **root `package.json` (npm workspaces)**: `apps/web`, `apps/services/*`, `packages/*`, `infrastructure`.
 
 ```
 xcloud-api/
-├── docker-compose.yml          # PostgreSQL, Cassandra, Redis, Kafka (KRaft), Elasticsearch + init containers
-├── .env.example                # copy to .env (root); all services read the ROOT .env
-├── db/
-│   ├── init.sql                # PostgreSQL schema
-│   └── cassandra-init.cql      # Cassandra schema
-├── apps/web/                   # React 19 + Vite SPA (TypeScript)
-├── packages/                   # Smithy-generated SDKs (sdk-client, sdk-server) — generated code, do not hand-edit
-└── x-api/
-    ├── model/                  # Smithy API definitions (source of truth for the API contract)
-    ├── build.gradle, gradlew   # Smithy build → OpenAPI / SDKs (needs Java 17+)
-    ├── auth-service/           # 3000
-    ├── user-service/           # 3001
-    ├── tweet-service/          # 3002
-    ├── feed-service/           # 3003
-    ├── fanout-service/         # Kafka consumer, no HTTP port
-    ├── notification-service/   # 3004
-    └── search-service/         # 3005
+├── package.json / tsconfig.base.json   # workspaces root
+├── docker-compose.yml                  # local infra: Postgres, Cassandra, Redis, Kafka, ES (+init)
+├── .env.example                        # copy to .env (root); ALL services read the ROOT .env
+├── db/                                 # init.sql (PostgreSQL) + cassandra-init.cql
+├── api-model/                          # Smithy model + Gradle (→ OpenAPI). needs Java 17+
+├── apps/
+│   ├── web/                            # React 19 + Vite SPA (ESM)
+│   └── services/                       # 8 backend services (TypeScript, CommonJS)
+├── packages/
+│   ├── shared/                         # @xcloud/shared — dual CJS/ESM; build before services
+│   ├── sdk-client/ sdk-server/         # Smithy SDK skeletons (generation DEFERRED — see docs/sdk-generation.md)
+├── infrastructure/                     # AWS CDK (stacks/, constructs/, config/)
+├── k8s/                                # reference only (ADR-002 chose ECS over EKS)
+└── docs/                               # ADRs, runbooks, migration-baseline.md
 ```
 
 ## Services & data stores
 
-| Service | Port (env var) | Store | Notes |
-|---|---|---|---|
-| auth | 3000 (`AUTH_PORT`) | PostgreSQL `auth_users` | JWT + bcrypt; Cognito config present (`config/cognito.config.ts`). Register also creates the `users` row atomically. |
-| user | 3001 (`USER_PORT`) | PostgreSQL `users`, `follows` | profiles, follow/unfollow |
-| tweet | 3002 (`TWEET_PORT`) | Cassandra `tweets`, `likes` | publishes `tweet.created`, `tweet.liked` |
-| feed | 3003 (`FEED_PORT`) | Redis cache + Cassandra fallback | hydrates tweets from tweet-service |
-| fanout | — (no HTTP) | Redis write + PostgreSQL read | consumes `tweet.created`, fans out to follower feeds |
-| notification | 3004 (`NOTIFICATION_PORT`) | PostgreSQL `notifications` | consumes `tweet.liked`, `user.followed` |
-| search | 3005 (`SEARCH_PORT`) | Elasticsearch `tweets` index | consumes `tweet.created` |
+`apps/services/*` — all TypeScript on Express 5, CommonJS, each reads the root `.env`.
 
-Kafka topics: `tweet.created`, `tweet.liked`, `user.followed` (auto-created by the `kafka-init` container).
+| Service | Port (env var) | Store | Messaging |
+|---|---|---|---|
+| auth | 3000 (`AUTH_PORT`) | PostgreSQL `auth_users` | — (JWT+bcrypt; Cognito gated by NODE_ENV) |
+| user | 3001 (`USER_PORT`) | PostgreSQL `users`,`follows` | publishes `user.followed` |
+| tweet | 3002 (`TWEET_PORT`) | Cassandra/Keyspaces | publishes `tweet.created`, `tweet.liked` |
+| feed | 3003 (`FEED_PORT`) | Redis + Cassandra | — (HTTP hydration) |
+| notification | 3004 (`NOTIFICATION_PORT`) | PostgreSQL `notifications` | consumes `tweet.liked`, `user.followed` |
+| search | 3005 (`SEARCH_PORT`) | Elasticsearch / OpenSearch | consumes `tweet.created` |
+| media | 3006 (`MEDIA_PORT`) | S3 (prod) | — (stub: `/health` + 503) |
+| fanout | worker; `/health` 3007 (`FANOUT_PORT`) | Redis + PostgreSQL | consumes `tweet.created` |
+
+## Hybrid messaging (the key architectural decision)
+
+Producers/consumers go through **`@xcloud/shared`** (`packages/shared/src/messaging/`), which switches transport by `NODE_ENV`:
+- **local dev → Kafka** (kafkajs; topics `tweet.created`, `tweet.liked`, `user.followed`, auto-created by `kafka-init`).
+- **production → SQS/SNS.** `tweet.created` fans out to **two** consumers (fanout + search) via an **SNS topic → 2 SQS queues**; `tweet.liked`/`user.followed` are 1:1 SQS queues.
+
+Use `createPublisher({clientId})` / `createConsumer({clientId, groupId})`. Prod env vars (set by CDK, matched in shared): `TWEET_CREATED_TOPIC_ARN`, `FANOUT_QUEUE_URL`, `TWEET_INDEX_QUEUE_URL`, `LIKE_EVENT_QUEUE_URL`, `FOLLOW_EVENT_QUEUE_URL`. Do **not** reintroduce direct `kafkajs` in services — route through `@xcloud/shared`.
 
 ## Service conventions
 
-Every `x-api/*` service is TypeScript on Express 5 with the same layered structure:
-
-```
-src/
-├── index.ts          # loads root .env via path.resolve(__dirname, "../../../.env"), starts server
-├── app.ts            # Express app wiring
-├── config/           # db / redis / cassandra / cognito clients
-├── routes/           # *.routes.ts
-├── controllers/      # *.controller.ts
-├── services/         # *.service.ts (business logic)
-├── repositories/     # data access
-├── middleware/       # auth / validate-jwt
-└── events/           # Kafka producers/consumers (where applicable)
-```
-
-- Env is loaded from the **root `.env`** (`../../../.env`), not per-service. There is no `x-api/.env` despite the README mentioning `cp .env x-api/.env` — that copy is not required for services to run.
-- API routes are versioned under `/v1/<resource>`. The web SPA proxies `/api/v1/<service>/*` → `http://localhost:<port>/v1/<service>/*` via `apps/web/vite.config.ts`.
-- Tests: Jest + ts-jest, files in each service's `test/` dir as `*.test.ts`, run with `jest --runInBand`.
+Layered: `src/{index.ts, app.ts, config/, routes/, controllers/, services/, repositories/, events|consumers/}`.
+- `index.ts` loads the **root `.env`** via `path.resolve(__dirname, "../../../../.env")` (4 up from `src/`); config/consumer files use 5 up. There is **no** per-service `.env`.
+- Shared auth: routes import `verifyToken` from `@xcloud/shared` (the 5 old local copies were consolidated). Error handler, logger, pagination, jwt utils also live there.
+- API routes are `/v1/<resource>`. The web SPA proxies `/api/v1/<service>/*` → `http://localhost:<port>/v1/<service>/*` (`apps/web/vite.config.ts`).
+- `dev` uses `ts-node-dev --transpile-only` (**no type-checking**) — always run `tsc`/`npm run build` to catch type errors before committing.
 
 ## Common commands
 
-Per service (run from `x-api/<service>/`):
-
 ```bash
-npm install
-npm run dev      # ts-node-dev, hot reload
-npm run build    # tsc → dist/
-npm start        # node dist/index.js
-npm test         # jest --runInBand
-```
+npm install                              # root: installs all workspaces
+npm run build -w packages/shared         # MUST build shared before services
+npm run build --workspaces --if-present  # build everything (services + web + infra)
+npm test  --workspaces --if-present      # all Jest suites
 
-Infrastructure & web:
+# a service (from apps/services/<svc>/)
+npm run dev      # ts-node-dev hot reload     npm test    # jest --runInBand
 
-```bash
-docker compose up -d          # bring up all data stores + auto-create topics/keyspaces
-docker compose ps             # check health (wait ~60s)
-cd apps/web && npm run dev    # SPA on http://localhost:5173
-cd apps/web && npm run lint   # eslint
-```
+docker compose up -d                     # local infra (+auto topics/keyspace)
+cd apps/web && npm run dev               # SPA on :5173
 
-Smithy API model (needs Java 17+):
-
-```bash
-cd x-api && ./gradlew build
+cd api-model && ./gradlew build          # Smithy → OpenAPI (Java 17+)
+cd infrastructure && npx cdk synth --context env=beta   # CDK templates (no deploy)
 ```
 
 ## Notes & gotchas
 
-- **Kafka host port is 9094** (`PLAINTEXT_HOST`). `.env` / `.env.example` correctly use `KAFKA_BROKERS=localhost:9094`. The `docker exec ... --bootstrap-server localhost:9092` commands in the README run *inside* the container, where 9092 is correct.
-- Each service must be started in its own terminal; there is no orchestrator script that boots all of them.
-- A local PostgreSQL on 5432 conflicts with the Docker container — stop it first.
-- `packages/sdk-client` and `packages/sdk-server` are Smithy-generated; regenerate via the Gradle build rather than editing by hand.
-- This is a course/local-dev project — secrets in `.env` (e.g. `JWT_SECRET`) are dev-only placeholders.
+- **Local stays on Kafka** (host port **9094**, `PLAINTEXT_HOST`); `.env` uses `KAFKA_BROKERS=localhost:9094`. Don't break the local Kafka path when touching messaging — only the prod (SQS/SNS) branch is `NODE_ENV`-gated.
+- **`packages/shared` must be built first** — services resolve `@xcloud/shared` via the workspace symlink to its built `dist/`.
+- **CDK is pinned to `aws-cdk-lib`/`aws-cdk` 2.150.0** — newer 2.x unbundled `@aws-cdk/cloud-assembly-schema` and breaks module resolution under workspaces. Don't bump without re-verifying `cdk synth`.
+- **Beta is HTTP-only** (ALB :80, no ACM); the listener + SG ingress rules are declared in `EcsStack` (not the gateway/db/cache stacks) to avoid cross-stack dependency cycles. `enableSearch:false` on beta skips OpenSearch + search-service (~$136/mo target).
+- `SERVICE_PORTS` in `infrastructure/lib/config/constants.ts` must match each service's default `*_PORT` (health-check correctness).
+- SDK packages (`packages/sdk-{client,server}`) are skeletons; generation is deferred (`docs/sdk-generation.md`). Don't hand-edit `src/generated/`.
+- Course/local-dev project — `.env` secrets (`JWT_SECRET`) are dev-only placeholders.
