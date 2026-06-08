@@ -8,3 +8,4 @@ export * from './errors/forbidden.error';
 export * from './utils/logger';
 export * from './utils/pagination';
 export * from './utils/jwt.utils';
+export * from './messaging';

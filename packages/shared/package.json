@@ -1,7 +1,7 @@
 {
   "name": "@xcloud/shared",
   "version": "1.0.0",
-  "description": "Shared utilities, middleware, and types for xcloud services (dual ESM/CJS)",
+  "description": "Shared utilities, middleware, messaging, and types for xcloud services (dual ESM/CJS)",
   "exports": {
     ".": {
       "import": "./dist/esm/index.js",
@@ -17,7 +17,20 @@
     "build:esm": "tsc --project tsconfig.esm.json",
     "build": "npm run build:cjs && npm run build:esm"
   },
+  "dependencies": {
+    "@aws-sdk/client-sns": "^3.658.0",
+    "@aws-sdk/client-sqs": "^3.658.0",
+    "jsonwebtoken": "^9.0.3",
+    "kafkajs": "^2.2.4"
+  },
+  "peerDependencies": {
+    "express": "^5.0.0"
+  },
   "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/node": "^22.0.0",
+    "express": "^5.2.1",
     "typescript": "^5.3.0"
   }
 }
