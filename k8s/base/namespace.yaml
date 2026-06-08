@@ -1,0 +1,6 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: xcloud
+  labels:
+    app.kubernetes.io/managed-by: kubectl
