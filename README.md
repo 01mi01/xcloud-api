@@ -81,7 +81,7 @@ DB_PASSWORD=postgres
 JWT_SECRET=xcloud-local-dev-secret
 REDIS_HOST=localhost
 REDIS_PORT=6379
-KAFKA_BROKERS=localhost:9092
+KAFKA_BROKERS=localhost:9094
 ELASTICSEARCH_URL=http://localhost:9200
 CASSANDRA_CONTACT_POINTS=localhost
 CASSANDRA_KEYSPACE=xcloud
@@ -101,15 +101,9 @@ Esperar ~60 segundos a que todos los servicios estén healthy:
 docker compose ps
 ```
 
-### 4. Crear topics de Kafka
+> Los topics de Kafka (`tweet.created`, `tweet.liked`, `user.followed`) y el keyspace de Cassandra se crean automáticamente al levantar la infraestructura (contenedores `kafka-init` y `cassandra-init`). No es necesario crearlos manualmente.
 
-```bash
-docker exec xcloud-kafka /opt/kafka/bin/kafka-topics.sh --create --topic tweet.created --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1
-docker exec xcloud-kafka /opt/kafka/bin/kafka-topics.sh --create --topic tweet.liked --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1
-docker exec xcloud-kafka /opt/kafka/bin/kafka-topics.sh --create --topic user.followed --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1
-```
-
-### 5. Instalar dependencias y arrancar servicios
+### 4. Instalar dependencias y arrancar servicios
 
 Abrir una terminal por cada servicio:
 
@@ -136,7 +130,7 @@ cd x-api/notification-service && npm install && npm run dev
 cd x-api/search-service && npm install && npm run dev
 ```
 
-### 6. Arrancar el cliente web (opcional)
+### 5. Arrancar el cliente web (opcional)
 
 El SPA en `apps/web/` consume todos los servicios via un proxy de Vite (`/api/v1/<service>/*` → `http://localhost:<port>/v1/<service>/*`).
 
