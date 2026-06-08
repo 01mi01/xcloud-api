@@ -13,8 +13,11 @@ build/
 
 # gradle / smithy
 .gradle/
-x-api/build/
-x-api/*/build/
+api-model/build/
+
+# cdk
+infrastructure/cdk.out/
+cdk.out/
 
 # tests / coverage
 coverage/
