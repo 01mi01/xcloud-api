@@ -304,10 +304,12 @@ Los modelos Smithy en `api-model/model/` definen el contrato formal de la API. P
 
 ```bash
 cd api-model
-./gradlew build
+smithy build
 ```
 
-Requiere Java 17+.
+El OpenAPI generado queda en `api-model/build/smithy/openapi/openapi/TwitterService.openapi.json`.
+
+Requiere el [Smithy CLI](https://smithy.io/2.0/guides/smithy-cli/cli_installation.html) (`brew install smithy-cli`). Las dependencias de plugins (openapi, aws-traits) se declaran en `api-model/smithy-build.json` (bloque `maven`) y el CLI las descarga solo — ya no se necesita Gradle ni un JDK aparte.
 
 ## Infraestructura AWS (CDK)
 
@@ -329,7 +331,7 @@ xcloud-api/
 ├── docker-compose.yml            # infra local (Postgres, Cassandra, Redis, Kafka, ES)
 ├── .env.example
 ├── db/                           # init.sql (PostgreSQL) + cassandra-init.cql
-├── api-model/                    # Smithy + Gradle (genera OpenAPI)
+├── api-model/                    # Smithy CLI (genera OpenAPI)
 ├── apps/
 │   ├── web/                      # Frontend React (Vite)
 │   └── services/

@@ -18,7 +18,7 @@ xcloud-api/
 ├── docker-compose.yml                  # local infra: Postgres, Cassandra, Redis, Kafka, ES (+init)
 ├── .env.example                        # copy to .env (root); ALL services read the ROOT .env
 ├── db/                                 # init.sql (PostgreSQL) + cassandra-init.cql
-├── api-model/                          # Smithy model + Gradle (→ OpenAPI). needs Java 17+
+├── api-model/                          # Smithy model + Smithy CLI (→ OpenAPI). `brew install smithy-cli`
 ├── apps/
 │   ├── web/                            # React 19 + Vite SPA (ESM)
 │   └── services/                       # 8 backend services (TypeScript, CommonJS)
@@ -75,7 +75,7 @@ npm run dev      # ts-node-dev hot reload     npm test    # jest --runInBand
 docker compose up -d                     # local infra (+auto topics/keyspace)
 cd apps/web && npm run dev               # SPA on :5173
 
-cd api-model && ./gradlew build          # Smithy → OpenAPI (Java 17+)
+cd api-model && smithy build             # Smithy → OpenAPI (Smithy CLI; deps via smithy-build.json maven block)
 cd infrastructure && npx cdk synth --context env=beta   # CDK templates (no deploy)
 ```
 
