@@ -1,0 +1,20 @@
+{
+  "name": "xcloud",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "apps/services/*",
+    "packages/*",
+    "infrastructure"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "generate": "npm run generate --workspace=packages/sdk-client && npm run generate --workspace=packages/sdk-server"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

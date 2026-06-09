@@ -11,10 +11,13 @@ dist/
 build/
 *.tsbuildinfo
 
-# gradle / smithy
-.gradle/
-x-api/build/
-x-api/*/build/
+# smithy CLI output
+api-model/build/
+
+# cdk
+infrastructure/cdk.out/
+cdk.out/
+infrastructure/cdk.context.json
 
 # tests / coverage
 coverage/

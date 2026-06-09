@@ -12,6 +12,11 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   cassandra:
     image: cassandra:4.1
@@ -86,15 +91,19 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-    command: >
-      bash -c "
+    # Literal `|` block: newlines are preserved and act as shell statement
+    # separators. Keep each kafka-topics.sh call on ONE line — a `>` folded
+    # scalar mangles this (more-indented lines keep their newlines, and `\`
+    # continuations survive as literal `\ `), which is why the topics never
+    # got created.
+    command:
+      - bash
+      - -c
+      - |
         for topic in tweet.created tweet.liked user.followed; do
-          /opt/kafka/bin/kafka-topics.sh --create --if-not-exists \
-            --topic $$topic \
-            --bootstrap-server kafka:9092 \
-            --partitions 1 --replication-factor 1;
-        done && echo '[kafka-init] All topics created.'
-      "
+          /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --topic "$$topic" --bootstrap-server kafka:9092 --partitions 1 --replication-factor 1
+        done
+        echo '[kafka-init] All topics created.'
     restart: on-failure
 
   elasticsearch:
