@@ -4,7 +4,9 @@
   "maven": {
     "dependencies": [
       "software.amazon.smithy:smithy-openapi:1.50.0",
-      "software.amazon.smithy:smithy-aws-traits:1.50.0"
+      "software.amazon.smithy:smithy-aws-traits:1.50.0",
+      "software.amazon.smithy.typescript:smithy-typescript-codegen:0.31.1",
+      "software.amazon.smithy.typescript:smithy-aws-typescript-codegen:0.31.1"
     ]
   },
   "projections": {
@@ -13,6 +15,16 @@
         "openapi": {
           "service": "com.twitter#TwitterService",
           "version": "3.1.0"
+        }
+      }
+    },
+    "typescript-client": {
+      "plugins": {
+        "typescript-client-codegen": {
+          "service": "com.twitter#TwitterService",
+          "package": "@xcloud/sdk-client",
+          "packageVersion": "0.1.0",
+          "packageJson": { "license": "MIT" }
         }
       }
     }

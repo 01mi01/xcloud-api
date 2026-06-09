@@ -24,7 +24,8 @@ xcloud-api/
 │   └── services/                       # 8 backend services (TypeScript, CommonJS)
 ├── packages/
 │   ├── shared/                         # @xcloud/shared — dual CJS/ESM; build before services
-│   ├── sdk-client/ sdk-server/         # Smithy SDK skeletons (generation DEFERRED — see docs/sdk-generation.md)
+│   ├── sdk-client/                     # Smithy-generated TS client (gitignored output; `npm run generate`). Wired into apps/web.
+│   ├── sdk-server/                      # Smithy server SDK skeleton (still DEFERRED — see docs/sdk-generation.md)
 ├── infrastructure/                     # AWS CDK (stacks/, constructs/, config/)
 ├── k8s/                                # reference only (ADR-002 chose ECS over EKS)
 └── docs/                               # ADRs, runbooks, migration-baseline.md
@@ -86,5 +87,5 @@ cd infrastructure && npx cdk synth --context env=beta   # CDK templates (no depl
 - **CDK is pinned to `aws-cdk-lib`/`aws-cdk` 2.150.0** — newer 2.x unbundled `@aws-cdk/cloud-assembly-schema` and breaks module resolution under workspaces. Don't bump without re-verifying `cdk synth`.
 - **Beta is HTTP-only** (ALB :80, no ACM); the listener + SG ingress rules are declared in `EcsStack` (not the gateway/db/cache stacks) to avoid cross-stack dependency cycles. `enableSearch:false` on beta skips OpenSearch + search-service (~$136/mo target).
 - `SERVICE_PORTS` in `infrastructure/lib/config/constants.ts` must match each service's default `*_PORT` (health-check correctness).
-- SDK packages (`packages/sdk-{client,server}`) are skeletons; generation is deferred (`docs/sdk-generation.md`). Don't hand-edit `src/generated/`.
+- `packages/sdk-client` is **generated** from the Smithy model (`npm run generate`, needs `brew install smithy-cli`) and **wired into `apps/web`** (tweets/users/feed; see `apps/web/src/api/twitter-client.ts`). Its `src/`+`dist-*` are gitignored — don't hand-edit; re-generate. Codegen is pinned to **0.31.1** and built with `tsc --noCheck` (see `docs/sdk-generation.md` for the why). `packages/sdk-server` is still a deferred skeleton.
 - Course/local-dev project — `.env` secrets (`JWT_SECRET`) are dev-only placeholders.

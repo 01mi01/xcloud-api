@@ -7,7 +7,11 @@ use com.twitter#Timestamp
 use com.twitter#UUID
 
 // ── Estructura ──────────────────────────────────────
-structure User {
+// Shared user fields. Used as a mixin so the public `User` shape and the
+// operation outputs (which the services return *directly*, not wrapped) carry
+// identical members without reusing one structure as both a member and output.
+@mixin
+structure UserFields {
     @required
     userId: UUID
 
@@ -31,8 +35,11 @@ structure User {
     createdAt: Timestamp
 }
 
+structure User with [UserFields] {}
+
 // ── Operaciones ──────────────────────────────────────
 @readonly
+@optionalAuth
 @http(method: "GET", uri: "/v1/users/{handle}")
 operation GetUser {
     input := {
@@ -41,10 +48,8 @@ operation GetUser {
         handle: Handle
     }
 
-    output := {
-        @required
-        user: User
-    }
+    // user-service returns the User object directly (top-level fields).
+    output := with [UserFields] {}
 
     errors: [
         UserNotFoundException
@@ -61,10 +66,8 @@ operation UpdateUser {
         avatarUrl: String
     }
 
-    output := {
-        @required
-        user: User
-    }
+    // user-service returns the updated User object directly (top-level fields).
+    output := with [UserFields] {}
 
     errors: [
         UnauthorizedException

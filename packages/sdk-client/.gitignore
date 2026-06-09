@@ -1,1 +1,11 @@
-src/generated/
+# Everything below is produced by `npm run generate` (Smithy CLI codegen + build).
+# Only package.json, scripts/, README.md and this file are committed.
+node_modules/
+src/
+tsconfig.json
+tsconfig.cjs.json
+tsconfig.es.json
+tsconfig.types.json
+dist-es/
+dist-types/
+*.tsbuildinfo

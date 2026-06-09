@@ -27,6 +27,9 @@ structure Tweet {
     @required
     retweetCount: Integer
 
+    // tweet-service GetTweet includes this; feed-service omits it.
+    repliesCount: Integer
+
     @required
     createdAt: Timestamp
 }
@@ -43,7 +46,7 @@ operation CreateTweet {
         @required
         content: TweetContent
 
-        mediaIds: StringList
+        mediaUrls: StringList
 
         replyToTweetId: UUID
     }
@@ -60,6 +63,7 @@ operation CreateTweet {
 }
 
 @readonly
+@optionalAuth
 @http(method: "GET", uri: "/v1/tweets/{tweetId}")
 operation GetTweet {
     input := {

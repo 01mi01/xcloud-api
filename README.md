@@ -309,7 +309,23 @@ smithy build
 
 El OpenAPI generado queda en `api-model/build/smithy/openapi/openapi/TwitterService.openapi.json`.
 
-Requiere el [Smithy CLI](https://smithy.io/2.0/guides/smithy-cli/cli_installation.html) (`brew install smithy-cli`). Las dependencias de plugins (openapi, aws-traits) se declaran en `api-model/smithy-build.json` (bloque `maven`) y el CLI las descarga solo — ya no se necesita Gradle ni un JDK aparte.
+Requiere el [Smithy CLI](https://smithy.io/2.0/guides/smithy-cli/cli_installation.html) (`brew install smithy-cli`). Las dependencias de plugins (openapi, aws-traits, codegen TS) se declaran en `api-model/smithy-build.json` (bloque `maven`) y el CLI las descarga solo — ya no se necesita Gradle ni un JDK aparte.
+
+### Cliente TypeScript generado (`@xcloud/sdk-client`)
+
+El SPA consume un **cliente tipado generado desde el modelo Smithy** para las
+operaciones modeladas (**tweets, users, feed** — incl. like/follow). Auth,
+notificaciones y búsqueda no están en el modelo y siguen escritas a mano.
+
+```bash
+# Requiere el Smithy CLI. Genera packages/sdk-client (src/ y dist/ están gitignored).
+npm run generate
+```
+
+`apps/web/src/api/{tweets,users,feed}.ts` usan los `*Command` generados via
+`apps/web/src/api/twitter-client.ts` (endpoint `<origin>/api` → proxy de Vite,
+JWT por el esquema `@httpBearerAuth`). Detalles y notas de versión en
+[docs/sdk-generation.md](docs/sdk-generation.md).
 
 ## Infraestructura AWS (CDK)
 
