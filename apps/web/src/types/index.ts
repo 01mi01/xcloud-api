@@ -57,3 +57,14 @@ export interface AuthIdentity {
   handle: string | null;
   role: string;
 }
+
+// Notification as displayed in the UI — enriched with actor name and tweet excerpt
+export interface Notification {
+  id: string;
+  type: "like" | "retweet" | "follow" | "mention";
+  actorName: string;
+  actorHandle: string;
+  excerpt?: string;
+  read: boolean;
+  createdAt: string;
+}

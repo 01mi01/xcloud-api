@@ -1,0 +1,196 @@
+.layout {
+  display: flex;
+  min-height: 100vh;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.feed {
+  flex: 1;
+  min-width: 0;
+  border-left: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
+}
+
+/* Sticky top bar */
+.topBar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background-color: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+}
+
+.markAllBtn {
+  font-size: var(--font-size-sm);
+  color: var(--color-accent);
+  transition: opacity 0.2s;
+}
+
+.markAllBtn:hover {
+  opacity: 0.8;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tab {
+  flex: 1;
+  padding: var(--space-4);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  transition: background-color 0.2s, color 0.2s;
+  position: relative;
+}
+
+.tab:hover {
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}
+
+.tabActive {
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-bold);
+}
+
+.tabActive::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 56px;
+  height: 4px;
+  background-color: var(--color-accent);
+  border-radius: var(--radius-full);
+}
+
+/* Notification row */
+.notifRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background-color 0.2s;
+  position: relative;
+}
+
+.notifRow:hover {
+  background-color: var(--color-bg-hover);
+}
+
+/* Unread highlight */
+.unread {
+  background-color: rgba(29, 155, 240, 0.04);
+}
+
+/* Blue unread dot on the left edge */
+.dot {
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+/* Icon column */
+.iconCol {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.iconLike {
+  color: var(--color-danger);
+}
+
+.iconRetweet {
+  color: var(--color-success);
+}
+
+.iconFollow {
+  color: var(--color-accent);
+}
+
+.iconMention {
+  color: var(--color-accent);
+}
+
+/* Content area */
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+}
+
+.text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  font-size: var(--font-size-sm);
+}
+
+.actorName {
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+}
+
+.action {
+  color: var(--color-text-primary);
+}
+
+.excerpt {
+  width: 100%;
+  margin: 4px 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+.time {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  width: 100%;
+  margin-top: 2px;
+}
+
+/* Empty state */
+.empty {
+  padding: var(--space-6) var(--space-4);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-md);
+  text-align: center;
+}
+
+@media (max-width: 500px) {
+  .layout {
+    flex-direction: column;
+  }
+}

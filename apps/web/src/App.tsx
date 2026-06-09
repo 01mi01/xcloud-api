@@ -2,6 +2,11 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Home from "./pages/Home";
+import Profile from "./pages/Profile";
+import Search from "./pages/Search";
+import Notifications from "./pages/Notifications";
+import Following from "./pages/Following";
+import Bookmarks from "./pages/Bookmarks";
 import Placeholder from "./pages/Placeholder";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { useAuth } from "./context/AuthContext";
@@ -25,12 +30,11 @@ function App() {
           </ProtectedRoute>
         }
       />
-      {/* Pages not yet built — show placeholder instead of redirecting */}
       <Route
         path="/search"
         element={
           <ProtectedRoute>
-            <Placeholder title="Search" />
+            <Search />
           </ProtectedRoute>
         }
       />
@@ -38,7 +42,7 @@ function App() {
         path="/notifications"
         element={
           <ProtectedRoute>
-            <Placeholder title="Notifications" />
+            <Notifications />
           </ProtectedRoute>
         }
       />
@@ -46,7 +50,7 @@ function App() {
         path="/bookmarks"
         element={
           <ProtectedRoute>
-            <Placeholder title="Bookmarks" />
+            <Bookmarks />
           </ProtectedRoute>
         }
       />
@@ -54,7 +58,7 @@ function App() {
         path="/following"
         element={
           <ProtectedRoute>
-            <Placeholder title="Following" />
+            <Following />
           </ProtectedRoute>
         }
       />
@@ -62,11 +66,18 @@ function App() {
         path="/profile"
         element={
           <ProtectedRoute>
-            <Placeholder title="Profile" />
+            <Profile />
           </ProtectedRoute>
         }
       />
-      <Route path="*" element={<FallbackRoute />} />
+      <Route
+        path="/profile/:handle"
+        element={
+          <ProtectedRoute>
+            <Profile />
+          </ProtectedRoute>
+        }
+      />
     </Routes>
   );
 }
