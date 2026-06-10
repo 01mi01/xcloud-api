@@ -9,7 +9,6 @@ import RightSidebar from "../components/layout/RightSidebar";
 import TweetComposer from "../components/tweet/TweetComposer";
 import TweetCard from "../components/tweet/TweetCard";
 import styles from "./Home.module.css";
-import { mockTweets, mockCurrentUser, mockUsers } from "../data/mockData";
 
 type Tab = "foryou" | "following";
 
@@ -21,10 +20,25 @@ function Home() {
   const [activeTab, setActiveTab] = useState<Tab>("foryou");
 
   useEffect(() => {
-    // Using mock data while backend is unavailable
-    setTweets(mockTweets);
-    setLoading(false);
-  }, []);
+  let cancelled = false;
+  setLoading(true);
+  setError(null);
+  feedApi
+    .getFeed()
+    .then(async (res) => {
+      const hydrated = await hydrateTweets(res.tweets, identity?.userId);
+      if (!cancelled) setTweets(hydrated);
+    })
+    .catch((err: unknown) => {
+      if (cancelled) return;
+      if (err instanceof ApiError) setError(err.message);
+      else setError("Failed to load feed.");
+    })
+    .finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+  return () => { cancelled = true; };
+}, [identity?.userId]);
 
   const handleTweetCreated = useCallback(
     (raw: RawTweet) => {

@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { mockTweets, mockCurrentUser } from "../data/mockData";
+import * as tweetsApi from "../api/tweets";
+import { hydrateTweets } from "../api/hydrate";
+import { useAuth } from "../context/AuthContext";
 import type { Tweet } from "../types";
+import { mockCurrentUser } from "../data/mockData";
 import LeftSidebar from "../components/layout/LeftSidebar";
 import RightSidebar from "../components/layout/RightSidebar";
 import TweetCard from "../components/tweet/TweetCard";
@@ -30,29 +33,35 @@ function formatCount(n: number): string {
 function TweetDetail() {
   const { tweetId } = useParams<{ tweetId: string }>();
   const navigate = useNavigate();
+  const { identity } = useAuth();
 
-  // Find the tweet in mock data
-  const tweet = mockTweets.find((t) => t.tweetId === tweetId) ?? mockTweets[0];
-
-  // Mock replies — tweets that reply to this one
-  const [replies, setReplies] = useState<Tweet[]>(
-    mockTweets
-      .filter((t) => t.tweetId !== tweet.tweetId)
-      .slice(0, 3)
-      .map((t) => ({ ...t, replyToTweetId: tweet.tweetId }))
-  );
-
-  // Reply composer state
+  const [tweet, setTweet] = useState<Tweet | null>(null);
+  const [replies, setReplies] = useState<Tweet[]>([]);
+  const [loading, setLoading] = useState(true);
   const [replyContent, setReplyContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
   const remaining = MAX_CHARS - replyContent.length;
   const isEmpty = replyContent.trim().length === 0;
 
+  useEffect(() => {
+    if (!tweetId) return;
+    setLoading(true);
+    tweetsApi
+      .getTweet(tweetId)
+      .then(async (res) => {
+        const hydrated = await hydrateTweets([res.tweet], identity?.userId);
+        setTweet(hydrated[0] ?? null);
+      })
+      .catch(() => setTweet(null))
+      .finally(() => setLoading(false));
+  }, [tweetId, identity?.userId]);
+
   const handleReply = () => {
-    if (isEmpty || submitting) return;
+    if (!tweet || isEmpty || submitting) return;
     setSubmitting(true);
 
-    // Optimistic reply — added to top of replies list
+    // Optimistic reply — in production this calls POST /v1/tweets with replyToTweetId
     const newReply: Tweet = {
       tweetId: `reply-${Date.now()}`,
       content: replyContent,
@@ -71,6 +80,30 @@ function TweetDetail() {
     setReplyContent("");
     setSubmitting(false);
   };
+
+  if (loading) {
+    return (
+      <div className={styles.layout}>
+        <LeftSidebar />
+        <main className={styles.feed}>
+          <p className={styles.empty}>Loading…</p>
+        </main>
+        <RightSidebar />
+      </div>
+    );
+  }
+
+  if (!tweet) {
+    return (
+      <div className={styles.layout}>
+        <LeftSidebar />
+        <main className={styles.feed}>
+          <p className={styles.empty}>Tweet not found.</p>
+        </main>
+        <RightSidebar />
+      </div>
+    );
+  }
 
   return (
     <div className={styles.layout}>
@@ -91,7 +124,6 @@ function TweetDetail() {
         {/* Main tweet — expanded view */}
         <div className={styles.mainTweet}>
 
-          {/* Author row */}
           <div className={styles.authorRow}>
             <Avatar size={48} />
             <div className={styles.authorInfo}>
@@ -100,13 +132,10 @@ function TweetDetail() {
             </div>
           </div>
 
-          {/* Tweet content — larger font */}
           <p className={styles.content}>{tweet.content}</p>
 
-          {/* Full timestamp */}
           <p className={styles.timestamp}>{formatTimeFull(tweet.createdAt)}</p>
 
-          {/* Stats row */}
           <div className={styles.stats}>
             <span>
               <strong>{formatCount(tweet.retweetCount)}</strong>{" "}
@@ -122,7 +151,6 @@ function TweetDetail() {
             </span>
           </div>
 
-          {/* Action buttons */}
           <div className={styles.actions}>
             <button className={`${styles.actionBtn} ${styles.replyBtn}`}>
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={1.75}>
