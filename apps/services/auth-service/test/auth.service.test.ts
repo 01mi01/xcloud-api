@@ -3,8 +3,11 @@ import { Pool } from "pg";
 import bcrypt from "bcrypt";
 
 jest.mock("pg", () => {
+    // registerUser corre la inserción dentro de una transacción: además de
+    // pool.query (chequeo de existencia) usa pool.connect() → client.query/release.
+    const mockClient = { query: jest.fn(), release: jest.fn() };
     const query = jest.fn();
-    return { Pool: jest.fn(() => ({ query })) };
+    return { Pool: jest.fn(() => ({ query, connect: jest.fn(async () => mockClient) })) };
 });
 jest.mock("bcrypt");
 
@@ -16,13 +19,18 @@ beforeEach(() => jest.clearAllMocks());
 
 describe("registerUser", () => {
     it("creates user and returns userId", async () => {
-        mockQuery
-            .mockResolvedValueOnce({ rows: [] })
-            .mockResolvedValueOnce({ rows: [] });
+        mockQuery.mockResolvedValueOnce({ rows: [] }); // no existing email
         (mockBcrypt.hash as jest.Mock).mockResolvedValue("hashed");
 
         const userId = await svc.registerUser("alice", "alice@example.com", "secret");
         expect(typeof userId).toBe("string");
+
+        const client = await (mockPool as unknown as { connect(): Promise<{ query: jest.Mock }> }).connect();
+        const statements = client.query.mock.calls.map((c) => String(c[0]));
+        expect(statements).toContain("BEGIN");
+        expect(statements.some((s) => s.includes("INSERT INTO auth_users"))).toBe(true);
+        expect(statements.some((s) => s.includes("INSERT INTO users"))).toBe(true);
+        expect(statements).toContain("COMMIT");
     });
 
     it("throws UsernameExistsException when email already registered", async () => {

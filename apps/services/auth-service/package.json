@@ -42,6 +42,19 @@
     "testEnvironment": "node",
     "testMatch": [
       "**/test/**/*.test.ts"
-    ]
+    ],
+    "transformIgnorePatterns": [
+      "node_modules/(?!uuid)"
+    ],
+    "transform": {
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "tsconfig": {
+            "allowJs": true
+          }
+        }
+      ]
+    }
   }
 }

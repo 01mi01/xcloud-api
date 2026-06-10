@@ -17,7 +17,7 @@ committed. Only `package.json`, `scripts/generate.sh`, `.gitignore` and
 
 ```bash
 # Prereq: Smithy CLI  →  brew install smithy-cli
-npm run generate            # root → runs packages/sdk-client generate
+npm run generate            # root → generates sdk-client AND sdk-server
 ```
 
 `generate` (see `packages/sdk-client/scripts/generate.sh`):
@@ -55,12 +55,49 @@ types.
   `"./endpoints" is not exported from @smithy/core`), do a clean reinstall
   (`rm -rf node_modules package-lock.json && npm install`).
 
-## `@xcloud/sdk-server` — still DEFERRED
+## `@xcloud/sdk-server` — generated & wired (backend)
 
-`packages/sdk-server` remains a skeleton. The aggregate model maps to one
-service, while the runtime is 6–7 microservices, so the Smithy SSDK (which owns
-routing/serialization for a single service) doesn't fit cleanly over Express +
-the multi-service split. Adopting shared *types* (not the full SSDK) in a pilot
-service is the likely next step. Server codegen also needs
-`"disableDefaultValidation": true` (the model uses a custom `ValidationException`,
-not `smithy.framework#ValidationException`).
+`packages/sdk-server` is the **generated server SDK (SSDK)** for the same
+aggregate `com.twitter#TwitterService` (the `typescript-server` projection,
+plugin `typescript-ssdk-codegen`). Like the client, the generated sources and
+build output are git-ignored — `npm run generate` produces them (the root
+`generate` script runs both packages). It is built **CommonJS**
+(`dist-cjs` + `dist-types`) because the services are CJS.
+
+The earlier "one aggregate model vs 8 microservices" concern turned out to be a
+non-issue: the SSDK generates **per-operation** handlers
+(`getGetUserHandler(...)`, …), so each service imports only the handlers for
+the operations it owns.
+
+Two adoption levels are in place:
+
+- **Full SSDK pilot — user-service** (`apps/services/user-service/src/smithy/`):
+  `GetUser`, `UpdateUser`, `FollowUser`, `UnfollowUser` are served by generated
+  handlers, which own URL matching, deserialization, modeled-constraint
+  validation and response/error serialization. `express-adapter.ts` bridges
+  Express ↔ the SSDK's `HttpRequest`/`HttpResponse` (the JWT payload from
+  `verifyToken` rides in the handler `Context`); `operations.ts` supplies only
+  business logic, delegating to the existing service layer and rethrowing
+  domain errors as modeled exceptions (`UserNotFoundException`,
+  `ConflictException`, `ValidationException`). The non-modeled
+  `GET /by-id/:userId` route stays plain Express.
+- **Contract types — tweet-service & feed-service**: controllers type their
+  request payloads against the generated `*ServerInput` shapes (`import type`,
+  declared as a devDependency) so model drift on requests breaks the build.
+  Responses keep their tested hand-written shape for now (domain types use
+  `null` where the contract has optional members) — aligning them is the next
+  step if those services move to full SSDK.
+
+Notes:
+- The projection sets `"disableDefaultValidation": true` because the model uses
+  a custom `com.twitter#ValidationException` (not
+  `smithy.framework#ValidationException`); handlers take a
+  `ValidationCustomizer` that maps constraint failures to our exception
+  (see `operations.ts`).
+- `FollowUser`/`UnfollowUser` are modeled with `code: 204` to match the
+  services' actual (tested) success responses.
+- The SSDK runtime `@aws-smithy/server-common` is **1.0.0-alpha.10** (pinned
+  exactly). Fine for this course project; it is the least mature piece of the
+  Smithy TypeScript story.
+- Same `--noCheck` build rationale as the client (generated internals drift
+  against newer `@smithy/*` minors; the public types we consume are fine).

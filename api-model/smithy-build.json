@@ -18,6 +18,17 @@
         }
       }
     },
+    "typescript-server": {
+      "plugins": {
+        "typescript-ssdk-codegen": {
+          "service": "com.twitter#TwitterService",
+          "package": "@xcloud/sdk-server",
+          "packageVersion": "0.1.0",
+          "packageJson": { "license": "MIT" },
+          "disableDefaultValidation": true
+        }
+      }
+    },
     "typescript-client": {
       "plugins": {
         "typescript-client-codegen": {
