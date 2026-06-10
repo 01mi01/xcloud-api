@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { mockUsers, mockCurrentUser } from "../data/mockData";
+import { useAuth } from "../context/AuthContext";
 import type { User } from "../types";
 import LeftSidebar from "../components/layout/LeftSidebar";
 import RightSidebar from "../components/layout/RightSidebar";
@@ -11,12 +11,19 @@ type Tab = "following" | "followers";
 
 function Following() {
   const navigate = useNavigate();
+  const { identity } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>("following");
 
-  // Mock data — in production these would come from the user service
-  // using GET /v1/users/:userId/following and /followers
-  const following: User[] = mockUsers;
-  const followers: User[] = [mockUsers[0], mockUsers[2]];
+  const [following, setFollowingList] = useState<User[]>([]);
+  const [followers, setFollowers] = useState<User[]>([]);
+
+  useEffect(() => {
+    if (!identity?.userId) return;
+    // Following and followers endpoints not yet available
+    // leave empty — backend team to implement GET /v1/users/:userId/following
+    setFollowingList([]);
+    setFollowers([]);
+  }, [identity?.userId]);
 
   const list = activeTab === "following" ? following : followers;
 
@@ -25,12 +32,13 @@ function Following() {
       <LeftSidebar />
 
       <main className={styles.feed}>
-
         {/* Sticky top bar */}
         <div className={styles.topBar}>
           <div className={styles.topBarInfo}>
-            <span className={styles.displayName}>{mockCurrentUser.displayName}</span>
-            <span className={styles.handle}>@{mockCurrentUser.handle}</span>
+            <span className={styles.displayName}>{identity?.handle ?? ""}</span>
+            <span className={styles.handle}>
+              {identity?.handle ? `@${identity.handle}` : ""}
+            </span>
           </div>
         </div>
 
@@ -66,7 +74,6 @@ function Following() {
             onProfile={() => navigate(`/profile/${user.handle}`)}
           />
         ))}
-
       </main>
 
       <RightSidebar />
@@ -80,7 +87,6 @@ function UserRow({ user, onProfile }: { user: User; onProfile: () => void }) {
 
   return (
     <div className={styles.userRow}>
-
       {/* Clicking avatar or name goes to profile */}
       <div className={styles.avatarCol} onClick={onProfile}>
         <Avatar size={48} />
@@ -102,7 +108,6 @@ function UserRow({ user, onProfile }: { user: User; onProfile: () => void }) {
       >
         {following ? "Following" : "Follow"}
       </button>
-
     </div>
   );
 }

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as usersApi from "../api/users";
-import { mockCurrentUser, mockUsers, mockTweets } from "../data/mockData";
 import * as tweetsApi from "../api/tweets";
 import { hydrateTweets } from "../api/hydrate";
 import { ApiError } from "../api/client";
@@ -29,31 +28,31 @@ function Profile() {
   const [showEditModal, setShowEditModal] = useState(false);
 
   // Resolve which handle to show — fall back to logged-in user
-  const targetHandle = handle ?? identity?.handle ?? mockCurrentUser.handle;
-  const isOwnProfile = targetHandle === (identity?.handle ?? mockCurrentUser.handle);
+  const targetHandle = handle ?? identity?.handle ?? null;
+  const isOwnProfile = targetHandle === identity?.handle;
 
-  // Load user profile — uses mock data while backend is unavailable
   useEffect(() => {
     if (!targetHandle) return;
     setLoadingUser(true);
     setError(null);
-
-    // Mock: find by handle in mock users, fall back to current user mock
-    const found =
-      mockUsers.find((u) => u.handle === targetHandle) ?? mockCurrentUser;
-    setUser(found);
-    setFollowing(false);
-    setLoadingUser(false);
+    usersApi
+      .getUser(targetHandle)
+      .then((u) => {
+        setUser(u);
+        setFollowing(false);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof ApiError && err.status === 404)
+          setError("This account doesn't exist.");
+        else setError("Could not load profile.");
+      })
+      .finally(() => setLoadingUser(false));
   }, [targetHandle]);
 
-  // Load tweets for this user — filtered from mock data by authorId
   useEffect(() => {
     if (!user) return;
     setLoadingTweets(true);
-    const userTweets = mockTweets.filter(
-      (t) => t.author.userId === user.userId,
-    );
-    setTweets(userTweets);
+    setTweets([]);
     setLoadingTweets(false);
   }, [user]);
 
