@@ -9,6 +9,11 @@
   top: 0;
   height: 100vh;
   overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.sidebar::-webkit-scrollbar {
+  display: none;
 }
 
 /* Search */

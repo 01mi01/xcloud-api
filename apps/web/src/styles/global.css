@@ -1,18 +1,23 @@
 /* Global reset and base styles */
 @import "./variables.css";
 
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
 }
 
 body {
   background-color: var(--color-bg-primary);
+  padding-bottom: env(safe-area-inset-bottom);
   color: var(--color-text-primary);
   font-family: var(--font-family);
   font-size: var(--font-size-md);
@@ -38,6 +43,13 @@ img {
   max-width: 100%;
 }
 
-input, textarea {
+input,
+textarea {
   font-family: var(--font-family);
+}
+
+@media (max-width: 500px) {
+  #root {
+    padding-bottom: 56px;
+  }
 }

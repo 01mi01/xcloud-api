@@ -1,3 +1,6 @@
+import { useState } from "react";
+import ComposeTweetModal from "../tweet/ComposeTweetModal";
+import type { RawTweet } from "../../types";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import Avatar from "../common/Avatar";
@@ -100,6 +103,8 @@ function LeftSidebar() {
   const displayName =
     profile?.displayName ?? identity?.handle ?? identity?.email ?? "You";
   const handle = profile?.handle ?? identity?.handle ?? "";
+  const [showCompose, setShowCompose] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -133,32 +138,43 @@ function LeftSidebar() {
         ))}
       </nav>
 
-      <button className={styles.postBtn} onClick={() => {}}>
+      <button className={styles.postBtn} onClick={() => setShowCompose(true)}>
         <span className={styles.postBtnText}>Post</span>
         <span className={styles.postBtnIcon}>+</span>
       </button>
 
-      <div className={styles.userPill} onClick={() => navigate("/profile")}>
+      <div className={styles.userPill} onClick={() => setShowMenu((p) => !p)}>
         <Avatar size={40} />
         <div className={styles.userInfo}>
           <span className={styles.displayName}>{displayName}</span>
           <span className={styles.handle}>{handle ? `@${handle}` : ""}</span>
         </div>
-        <button
-          className={styles.dots}
-          onClick={handleLogout}
-          title="Sign out"
-          style={{
-            background: "none",
-            border: "none",
-            color: "inherit",
-            cursor: "pointer",
-            font: "inherit",
-          }}
-        >
-          ···
-        </button>
+        <span className={styles.dots}>···</span>
       </div>
+      {/* Compose tweet modal */}
+      {showCompose && (
+        <ComposeTweetModal
+          onClose={() => setShowCompose(false)}
+          onTweetCreated={(_tweet: RawTweet) => setShowCompose(false)}
+        />
+      )}
+
+      {showMenu && (
+        <div className={styles.pillMenu}>
+          <button
+            className={styles.pillMenuItem}
+            onClick={() => {
+              navigate("/profile");
+              setShowMenu(false);
+            }}
+          >
+            View profile
+          </button>
+          <button className={styles.pillMenuItem} onClick={handleLogout}>
+            Log out @{handle}
+          </button>
+        </div>
+      )}
     </aside>
   );
 }

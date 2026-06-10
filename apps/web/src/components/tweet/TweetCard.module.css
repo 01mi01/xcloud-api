@@ -113,3 +113,8 @@
   color: var(--color-accent);
   background-color: rgba(29, 155, 240, 0.1);
 }
+
+.bookmarkBtn:hover {
+  color: var(--color-accent);
+  background-color: rgba(29, 155, 240, 0.1);
+}
