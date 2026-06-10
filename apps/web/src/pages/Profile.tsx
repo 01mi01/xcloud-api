@@ -12,6 +12,7 @@ import RightSidebar from "../components/layout/RightSidebar";
 import TweetCard from "../components/tweet/TweetCard";
 import Avatar from "../components/common/Avatar";
 import styles from "./Profile.module.css";
+import EditProfileModal from "../components/profile/EditProfileModal";
 
 function Profile() {
   const { handle } = useParams<{ handle: string }>();
@@ -25,10 +26,11 @@ function Profile() {
   const [error, setError] = useState<string | null>(null);
   const [following, setFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   // Resolve which handle to show — fall back to logged-in user
-  const targetHandle = handle ?? identity?.handle ?? null;
-  const isOwnProfile = targetHandle === identity?.handle;
+  const targetHandle = handle ?? identity?.handle ?? mockCurrentUser.handle;
+  const isOwnProfile = targetHandle === (identity?.handle ?? mockCurrentUser.handle);
 
   // Load user profile — uses mock data while backend is unavailable
   useEffect(() => {
@@ -37,7 +39,8 @@ function Profile() {
     setError(null);
 
     // Mock: find by handle in mock users, fall back to current user mock
-    const found = mockUsers.find((u) => u.handle === targetHandle) ?? mockCurrentUser;
+    const found =
+      mockUsers.find((u) => u.handle === targetHandle) ?? mockCurrentUser;
     setUser(found);
     setFollowing(false);
     setLoadingUser(false);
@@ -47,7 +50,9 @@ function Profile() {
   useEffect(() => {
     if (!user) return;
     setLoadingTweets(true);
-    const userTweets = mockTweets.filter((t) => t.author.userId === user.userId);
+    const userTweets = mockTweets.filter(
+      (t) => t.author.userId === user.userId,
+    );
     setTweets(userTweets);
     setLoadingTweets(false);
   }, [user]);
@@ -136,7 +141,10 @@ function Profile() {
         <div className={styles.avatarRow}>
           <Avatar size={80} />
           {isOwnProfile ? (
-            <button className={styles.editBtn} onClick={() => {}}>
+            <button
+              className={styles.editBtn}
+              onClick={() => setShowEditModal(true)}
+            >
               Edit profile
             </button>
           ) : (
@@ -203,6 +211,15 @@ function Profile() {
         {tweets.map((tweet) => (
           <TweetCard key={tweet.tweetId} tweet={tweet} />
         ))}
+
+        {/* Edit profile modal */}
+        {showEditModal && (
+          <EditProfileModal
+            user={user}
+            onClose={() => setShowEditModal(false)}
+            onSave={(updated) => setUser((u) => (u ? { ...u, ...updated } : u))}
+          />
+        )}
       </main>
 
       <RightSidebar />

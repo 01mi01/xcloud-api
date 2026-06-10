@@ -2,6 +2,7 @@
 .sidebar {
   position: sticky;
   top: 0;
+  overflow: visible;
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -9,6 +10,7 @@
   padding: 0 12px;
   width: var(--sidebar-left-width);
   flex-shrink: 0;
+  isolation: isolate;
 }
 
 /* X logo at top */
@@ -18,6 +20,13 @@
   border-radius: var(--radius-full);
   cursor: pointer;
   transition: background-color 0.2s;
+  /* Force perfect square so border-radius makes a circle */
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .logo:hover {
@@ -63,23 +72,23 @@
   font-size: var(--font-size-xl);
 }
 
-/* Post button */
+/* Post button — white with black text */
 .postBtn {
   margin-top: var(--space-4);
   width: 90%;
   max-width: 230px;
   padding: 16px;
-  background-color: var(--color-accent);
-  color: #ffffff;
+  background-color: #ffffff;
+  color: #000000;
   border-radius: var(--radius-full);
-  font-size: var(--font-size-md);
+  font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
   transition: background-color 0.2s;
   text-align: center;
 }
 
 .postBtn:hover {
-  background-color: var(--color-accent-hover);
+  background-color: #e7e9ea;
 }
 
 .postBtnIcon {
@@ -137,13 +146,45 @@
   text-overflow: ellipsis;
 }
 
+/* 3 dots — bigger and more visible */
 .dots {
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-md);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
   flex-shrink: 0;
+  letter-spacing: 2px;
 }
 
-/* Responsive — collapse to icons only */
+/* Pill menu */
+.pillMenu {
+  position: absolute;
+  bottom: 70px;
+  left: 12px;
+  left: calc(var(--sidebar-left-width) - 268px);
+  width: 280px;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(255, 255, 255, 0.1);
+  z-index: 50;
+}
+
+.pillMenuItem {
+  width: 100%;
+  padding: 16px;
+  text-align: left;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  transition: background-color 0.2s;
+}
+
+.pillMenuItem:hover {
+  background-color: var(--color-bg-secondary);
+}
+
+/* ── Responsive — collapse to icons only ───────────────── */
 @media (max-width: 1280px) {
   .sidebar {
     width: 88px;
@@ -157,6 +198,9 @@
 
   .navItem {
     justify-content: center;
+    width: 52px;
+    height: 52px;
+    padding: 0;
   }
 
   .postBtnText {
@@ -168,12 +212,15 @@
   }
 
   .postBtn {
-    width: 50px;
-    height: 50px;
+    width: 52px;
+    height: 52px;
     padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
+    font-size: var(--font-size-xl);
+    max-width: unset;
+    margin-top: var(--space-4);
   }
 
   .userInfo,
@@ -183,12 +230,72 @@
 
   .userPill {
     justify-content: center;
-    width: fit-content;
+    width: 52px;
+    height: 52px;
+    padding: 0;
+  }
+
+  .pillMenu {
+    left: 88px;
+    bottom: 70px;
   }
 }
 
+/* ── Mobile — bottom nav bar ───────────────────────────── */
 @media (max-width: 500px) {
   .sidebar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    top: unset;
+    width: 100%;
+    height: 56px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-around;
+    padding: 0 8px;
+    background-color: var(--color-bg-primary);
+    border-top: 1px solid var(--color-border);
+    z-index: 40;
+  }
+
+  .logo {
     display: none;
+  }
+
+  .nav {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-around;
+    flex: 1;
+    gap: 0;
+  }
+
+  .navItem {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .postBtn {
+    width: 44px;
+    height: 44px;
+    margin-top: 0;
+    font-size: var(--font-size-xl);
+  }
+
+  .userPill {
+    width: 44px;
+    height: 44px;
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+
+  .pillMenu {
+    left: 8px;
+    bottom: 64px;
+    width: calc(100vw - 16px);
   }
 }
