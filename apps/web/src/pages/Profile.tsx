@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as usersApi from "../api/users";
 import { mockCurrentUser, mockUsers, mockTweets } from "../data/mockData";
+import * as tweetsApi from "../api/tweets";
+import { hydrateTweets } from "../api/hydrate";
+import { ApiError } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import type { User, Tweet } from "../types";
 import LeftSidebar from "../components/layout/LeftSidebar";
@@ -9,6 +12,7 @@ import RightSidebar from "../components/layout/RightSidebar";
 import TweetCard from "../components/tweet/TweetCard";
 import Avatar from "../components/common/Avatar";
 import styles from "./Profile.module.css";
+import EditProfileModal from "../components/profile/EditProfileModal";
 
 function Profile() {
   const { handle } = useParams<{ handle: string }>();
@@ -22,30 +26,34 @@ function Profile() {
   const [error, setError] = useState<string | null>(null);
   const [following, setFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   // Resolve which handle to show — fall back to logged-in user
   const targetHandle = handle ?? identity?.handle ?? null;
   const isOwnProfile = targetHandle === identity?.handle;
 
-  // Load user profile — uses mock data while backend is unavailable
   useEffect(() => {
     if (!targetHandle) return;
     setLoadingUser(true);
     setError(null);
-
-    // Mock: find by handle in mock users, fall back to current user mock
-    const found = mockUsers.find((u) => u.handle === targetHandle) ?? mockCurrentUser;
-    setUser(found);
-    setFollowing(false);
-    setLoadingUser(false);
+    usersApi
+      .getUser(targetHandle)
+      .then((u) => {
+        setUser(u);
+        setFollowing(false);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof ApiError && err.status === 404)
+          setError("This account doesn't exist.");
+        else setError("Could not load profile.");
+      })
+      .finally(() => setLoadingUser(false));
   }, [targetHandle]);
 
-  // Load tweets for this user — filtered from mock data by authorId
   useEffect(() => {
     if (!user) return;
     setLoadingTweets(true);
-    const userTweets = mockTweets.filter((t) => t.author.userId === user.userId);
-    setTweets(userTweets);
+    setTweets([]);
     setLoadingTweets(false);
   }, [user]);
 
@@ -133,7 +141,10 @@ function Profile() {
         <div className={styles.avatarRow}>
           <Avatar size={80} />
           {isOwnProfile ? (
-            <button className={styles.editBtn} onClick={() => {}}>
+            <button
+              className={styles.editBtn}
+              onClick={() => setShowEditModal(true)}
+            >
               Edit profile
             </button>
           ) : (
@@ -200,6 +211,15 @@ function Profile() {
         {tweets.map((tweet) => (
           <TweetCard key={tweet.tweetId} tweet={tweet} />
         ))}
+
+        {/* Edit profile modal */}
+        {showEditModal && (
+          <EditProfileModal
+            user={user}
+            onClose={() => setShowEditModal(false)}
+            onSave={(updated) => setUser((u) => (u ? { ...u, ...updated } : u))}
+          />
+        )}
       </main>
 
       <RightSidebar />

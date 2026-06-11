@@ -9,7 +9,7 @@ function ProtectedRoute({ children }: Props) {
   const { status } = useAuth();
 
   if (status === "loading") return null;
-  //if (status === "anon") return <Navigate to="/login" replace />;
+  if (status === "anon") return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 

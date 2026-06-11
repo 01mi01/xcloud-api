@@ -1,6 +1,12 @@
-import { useState } from "react";
-import type { Notification } from "../types";
-import { mockNotifications } from "../data/mockData";
+import { useState, useEffect } from "react";
+import * as notificationsApi from "../api/notifications";
+type Notification = notificationsApi.Notification & {
+  actorName: string;
+  actorHandle: string;
+  excerpt?: string;
+  read: boolean;
+  createdAt: string;
+};
 import LeftSidebar from "../components/layout/LeftSidebar";
 import RightSidebar from "../components/layout/RightSidebar";
 import Avatar from "../components/common/Avatar";
@@ -61,7 +67,23 @@ function notifText(type: string, actorName: string, _excerpt?: string): string {
 
 function Notifications() {
   const [activeTab, setActiveTab] = useState<Tab>("all");
-  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+
+useEffect(() => {
+  notificationsApi
+    .listNotifications()
+    .then((res) =>
+      setNotifications(
+        res.notifications.map((n) => ({
+          ...n,
+          actorName: n.actorId,
+          actorHandle: n.actorId,
+          excerpt: n.targetId ?? undefined,
+        }))
+      )
+    )
+    .catch(() => setNotifications([]));
+}, []);
 
   const markAllRead = () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
