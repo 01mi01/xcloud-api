@@ -24,7 +24,8 @@ xcloud-api/
 │   └── services/                       # 8 backend services (TypeScript, CommonJS)
 ├── packages/
 │   ├── shared/                         # @xcloud/shared — dual CJS/ESM; build before services
-│   ├── sdk-client/ sdk-server/         # Smithy SDK skeletons (generation DEFERRED — see docs/sdk-generation.md)
+│   ├── sdk-client/                     # Smithy-generated TS client (gitignored output; `npm run generate`). Wired into apps/web.
+│   ├── sdk-server/                     # Smithy-generated server SDK/SSDK, CJS (gitignored output; `npm run generate`). Full-SSDK pilot in user-service; contract types in tweet/feed.
 ├── infrastructure/                     # AWS CDK (stacks/, constructs/, config/)
 ├── k8s/                                # reference only (ADR-002 chose ECS over EKS)
 └── docs/                               # ADRs, runbooks, migration-baseline.md
@@ -73,7 +74,8 @@ npm test  --workspaces --if-present      # all Jest suites
 npm run dev      # ts-node-dev hot reload     npm test    # jest --runInBand
 
 docker compose up -d                     # local infra (+auto topics/keyspace)
-cd apps/web && npm run dev               # SPA on :5173
+./start-dev.sh                           # all 8 services + web SPA in one terminal (logs → logs/<svc>.log)
+cd apps/web && npm run dev               # SPA on :5173 (if not using start-dev.sh)
 
 cd api-model && smithy build             # Smithy → OpenAPI (Smithy CLI; deps via smithy-build.json maven block)
 cd infrastructure && npx cdk synth --context env=beta   # CDK templates (no deploy)
@@ -86,5 +88,7 @@ cd infrastructure && npx cdk synth --context env=beta   # CDK templates (no depl
 - **CDK is pinned to `aws-cdk-lib`/`aws-cdk` 2.150.0** — newer 2.x unbundled `@aws-cdk/cloud-assembly-schema` and breaks module resolution under workspaces. Don't bump without re-verifying `cdk synth`.
 - **Beta is HTTP-only** (ALB :80, no ACM); the listener + SG ingress rules are declared in `EcsStack` (not the gateway/db/cache stacks) to avoid cross-stack dependency cycles. `enableSearch:false` on beta skips OpenSearch + search-service (~$136/mo target).
 - `SERVICE_PORTS` in `infrastructure/lib/config/constants.ts` must match each service's default `*_PORT` (health-check correctness).
-- SDK packages (`packages/sdk-{client,server}`) are skeletons; generation is deferred (`docs/sdk-generation.md`). Don't hand-edit `src/generated/`.
+- `packages/sdk-client` is **generated** from the Smithy model (`npm run generate`, needs `brew install smithy-cli`) and **wired into `apps/web`** (tweets/users/feed; see `apps/web/src/api/twitter-client.ts`). Its `src/`+`dist-*` are gitignored — don't hand-edit; re-generate. Codegen is pinned to **0.31.1** and built with `tsc --noCheck` (see `docs/sdk-generation.md` for the why).
+- `packages/sdk-server` is the **generated Smithy server SDK** (same pipeline; CJS build, gitignored output). **user-service** serves its 4 modeled operations through generated SSDK handlers (`apps/services/user-service/src/smithy/` — Express adapter + operation impls); tweet/feed controllers use generated `*ServerInput` **types only** (devDependency). The SSDK runtime `@aws-smithy/server-common` is alpha, pinned exactly. For modeled user-service routes, change the model and regenerate — don't hand-write Express handlers around the SSDK.
+- **Jest quirks (don't "clean up"):** fanout/feed test scripts use `--forceExit` (their suites open a real Redis connection at import time via Jest automock and never exit otherwise — this used to hang `npm test --workspaces` silently); auth-service's `jest` block transpiles `uuid` (`uuid@14` is ESM-only) via `transformIgnorePatterns` + `allowJs`; infrastructure's `jest` block is scoped to `roots: ["<rootDir>/test"]` so stale compiled copies under `cdk.out/.ts-output/` aren't picked up.
 - Course/local-dev project — `.env` secrets (`JWT_SECRET`) are dev-only placeholders.

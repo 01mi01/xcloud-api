@@ -18,26 +18,31 @@ const mockEvent: svc.TweetCreatedEvent = {
 beforeEach(() => jest.clearAllMocks());
 
 describe("processTweetCreated", () => {
-    it("writes tweetId to feed cache of each follower", async () => {
+    // El servicio incluye al autor entre los destinatarios (ve sus propios
+    // tweets en su feed), además de todos sus followers.
+    it("writes tweetId to feed cache of the author and each follower", async () => {
         mockFollowerRepo.getFollowerIds.mockResolvedValue(["user-1", "user-2", "user-3"]);
         mockFeedCacheRepo.prependToFeed.mockResolvedValue();
 
         await svc.processTweetCreated(mockEvent);
 
         expect(mockFollowerRepo.getFollowerIds).toHaveBeenCalledWith("author-uuid-1");
-        expect(mockFeedCacheRepo.prependToFeed).toHaveBeenCalledTimes(3);
+        expect(mockFeedCacheRepo.prependToFeed).toHaveBeenCalledTimes(4);
+        expect(mockFeedCacheRepo.prependToFeed).toHaveBeenCalledWith("author-uuid-1", "tweet-uuid-1");
         expect(mockFeedCacheRepo.prependToFeed).toHaveBeenCalledWith("user-1", "tweet-uuid-1");
         expect(mockFeedCacheRepo.prependToFeed).toHaveBeenCalledWith("user-2", "tweet-uuid-1");
         expect(mockFeedCacheRepo.prependToFeed).toHaveBeenCalledWith("user-3", "tweet-uuid-1");
     });
 
-    it("skips fan-out when author has no followers", async () => {
+    it("fans out only to the author's own feed when there are no followers", async () => {
         mockFollowerRepo.getFollowerIds.mockResolvedValue([]);
+        mockFeedCacheRepo.prependToFeed.mockResolvedValue();
 
         await svc.processTweetCreated(mockEvent);
 
         expect(mockFollowerRepo.getFollowerIds).toHaveBeenCalledWith("author-uuid-1");
-        expect(mockFeedCacheRepo.prependToFeed).not.toHaveBeenCalled();
+        expect(mockFeedCacheRepo.prependToFeed).toHaveBeenCalledTimes(1);
+        expect(mockFeedCacheRepo.prependToFeed).toHaveBeenCalledWith("author-uuid-1", "tweet-uuid-1");
     });
 
     it("handles fan-out to a single follower", async () => {
@@ -46,7 +51,8 @@ describe("processTweetCreated", () => {
 
         await svc.processTweetCreated(mockEvent);
 
-        expect(mockFeedCacheRepo.prependToFeed).toHaveBeenCalledTimes(1);
+        expect(mockFeedCacheRepo.prependToFeed).toHaveBeenCalledTimes(2);
+        expect(mockFeedCacheRepo.prependToFeed).toHaveBeenCalledWith("author-uuid-1", "tweet-uuid-1");
         expect(mockFeedCacheRepo.prependToFeed).toHaveBeenCalledWith("user-solo", "tweet-uuid-1");
     });
 });

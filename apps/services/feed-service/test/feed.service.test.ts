@@ -49,7 +49,8 @@ describe("getFeed", () => {
         const result = await svc.getFeed("user-uuid-1");
 
         expect(mockDbRepo.getFollowingIds).toHaveBeenCalledWith("user-uuid-1");
-        expect(mockDbRepo.rebuildFeedFromDb).toHaveBeenCalledWith(["author-uuid-1"], 800);
+        // El rebuild incluye al propio usuario (ve sus propios tweets) además de sus followings.
+        expect(mockDbRepo.rebuildFeedFromDb).toHaveBeenCalledWith(["user-uuid-1", "author-uuid-1"], 800);
         expect(mockCacheRepo.setFeedTweetIds).toHaveBeenCalledWith("user-uuid-1", ["tweet-uuid-1"]);
         expect(result.tweets).toEqual([mockTweet]);
     });

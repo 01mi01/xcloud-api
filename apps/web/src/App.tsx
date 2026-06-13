@@ -8,7 +8,7 @@ import Notifications from "./pages/Notifications";
 import Following from "./pages/Following";
 import Bookmarks from "./pages/Bookmarks";
 import TweetDetail from "./pages/TweetDetail";
-import Placeholder from "./pages/Placeholder";
+// import Placeholder from "./pages/Placeholder";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { useAuth } from "./context/AuthContext";
 
@@ -87,6 +87,7 @@ function App() {
           </ProtectedRoute>
         }
       />
+      <Route path="*" element={<FallbackRoute />} />
     </Routes>
   );
 }

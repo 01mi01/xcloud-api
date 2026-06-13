@@ -1,12 +1,46 @@
 {
   "name": "@xcloud/sdk-server",
-  "version": "1.0.0",
-  "description": "Smithy-generated server contracts (CJS) — consumed by backend services",
-  "main": "./src/index.ts",
+  "version": "0.1.0",
+  "description": "Smithy-generated server SDK (SSDK) for com.twitter#TwitterService — typed operation handlers + contract types, consumed by the backend services (CommonJS)",
+  "main": "./dist-cjs/index.js",
+  "types": "./dist-types/index.d.ts",
   "scripts": {
-    "generate": "bash scripts/generate.sh"
+    "generate": "bash scripts/generate.sh",
+    "build": "tsc -p tsconfig.cjs.json --noCheck && tsc -p tsconfig.types.json --noCheck",
+    "clean": "rm -rf dist-cjs dist-types *.tsbuildinfo"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@aws-crypto/sha256-browser": "5.2.0",
+    "@aws-crypto/sha256-js": "5.2.0",
+    "@aws-sdk/core": "3.835.0",
+    "@aws-sdk/types": "3.821.0",
+    "@aws-smithy/server-common": "1.0.0-alpha.10",
+    "@smithy/config-resolver": "^4.1.4",
+    "@smithy/fetch-http-handler": "^5.0.4",
+    "@smithy/hash-node": "^4.0.4",
+    "@smithy/invalid-dependency": "^4.0.4",
+    "@smithy/middleware-content-length": "^4.0.4",
+    "@smithy/middleware-retry": "^4.1.13",
+    "@smithy/middleware-serde": "^4.0.8",
+    "@smithy/middleware-stack": "^4.0.4",
+    "@smithy/node-http-handler": "^4.0.6",
+    "@smithy/protocol-http": "^5.1.2",
+    "@smithy/smithy-client": "^4.4.4",
+    "@smithy/types": "^4.3.1",
+    "@smithy/url-parser": "^4.0.4",
+    "@smithy/util-base64": "^4.0.0",
+    "@smithy/util-body-length-browser": "^4.0.0",
+    "@smithy/util-body-length-node": "^4.0.0",
+    "@smithy/util-defaults-mode-browser": "^4.0.20",
+    "@smithy/util-defaults-mode-node": "^4.0.20",
+    "@smithy/util-endpoints": "^3.0.6",
+    "@smithy/util-utf8": "^4.0.0",
+    "tslib": "^2.6.2"
   },
   "devDependencies": {
-    "typescript": "^5.3.0"
+    "@tsconfig/node18": "^18.2.4",
+    "@types/node": "^22.0.0",
+    "typescript": "~5.8.3"
   }
 }

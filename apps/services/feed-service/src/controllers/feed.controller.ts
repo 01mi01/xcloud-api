@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
 import { JwtPayload } from "jsonwebtoken";
+// Contrato generado desde el modelo Smithy (api-model) — solo tipos.
+import type { GetFeedServerInput } from "@xcloud/sdk-server";
 import * as svc from "../services/feed.service";
 
 type AuthRequest = Request & { user: JwtPayload & { sub: string } };
@@ -14,8 +16,8 @@ export const getFeed = async (req: Request, res: Response): Promise<void> => {
     const authReq = req as AuthRequest;
     const userId  = authReq.user.sub;
 
-    const cursor = req.query.cursor as string | undefined;
-    const limit  = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+    const cursor: GetFeedServerInput["cursor"] = req.query.cursor as string | undefined;
+    const limit: GetFeedServerInput["limit"]   = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
 
     if (limit !== undefined && (isNaN(limit) || limit < 1)) {
         res.status(400).json({ message: "limit must be a positive integer" });

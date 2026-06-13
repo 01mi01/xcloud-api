@@ -6,12 +6,12 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand --forceExit"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "Fan-out Service — consume TweetCreated events and writes to feed cache",
+  "description": "Fan-out Service \u2014 consume TweetCreated events and writes to feed cache",
   "dependencies": {
     "@xcloud/shared": "*",
     "dotenv": "^17.4.2",

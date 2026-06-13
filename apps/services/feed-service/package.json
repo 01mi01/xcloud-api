@@ -6,12 +6,12 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand --forceExit"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "Feed Service — construye y sirve el timeline personalizado del usuario",
+  "description": "Feed Service \u2014 construye y sirve el timeline personalizado del usuario",
   "dependencies": {
     "@xcloud/shared": "*",
     "axios": "^1.7.9",
@@ -29,6 +29,7 @@
     "@types/jsonwebtoken": "^9.0.9",
     "@types/node": "^22.0.0",
     "@types/uuid": "^10.0.0",
+    "@xcloud/sdk-server": "*",
     "jest": "^29.7.0",
     "ts-jest": "^29.3.4",
     "ts-node-dev": "^2.0.0",
