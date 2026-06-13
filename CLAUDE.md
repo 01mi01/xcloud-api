@@ -74,7 +74,8 @@ npm test  --workspaces --if-present      # all Jest suites
 npm run dev      # ts-node-dev hot reload     npm test    # jest --runInBand
 
 docker compose up -d                     # local infra (+auto topics/keyspace)
-cd apps/web && npm run dev               # SPA on :5173
+./start-dev.sh                           # all 8 services + web SPA in one terminal (logs → logs/<svc>.log)
+cd apps/web && npm run dev               # SPA on :5173 (if not using start-dev.sh)
 
 cd api-model && smithy build             # Smithy → OpenAPI (Smithy CLI; deps via smithy-build.json maven block)
 cd infrastructure && npx cdk synth --context env=beta   # CDK templates (no deploy)

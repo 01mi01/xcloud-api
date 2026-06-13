@@ -111,7 +111,24 @@ npm install                          # instala todos los workspaces
 npm run build -w packages/shared     # @xcloud/shared (lo consumen los servicios)
 ```
 
-Luego abrir una terminal por servicio (los servicios viven en `apps/services/`):
+#### Opción A — Script todo-en-uno (recomendado)
+
+Arranca los 8 microservicios **y** el SPA desde **una sola terminal**:
+
+```bash
+./start-dev.sh
+```
+
+Cada proceso corre en segundo plano; los logs van a `logs/<servicio>.log`.
+Para ver la salida de un servicio en tiempo real:
+
+```bash
+tail -f logs/tweet-service.log
+```
+
+Presiona `Ctrl+C` para detener todos los procesos a la vez.
+
+#### Opción B — Una terminal por servicio
 
 ```bash
 # Terminal 1 — Auth Service          (puerto 3000)
@@ -142,8 +159,10 @@ cd apps/services/search-service && npm run dev
 
 El SPA en `apps/web/` consume todos los servicios via un proxy de Vite (`/api/v1/<service>/*` → `http://localhost:<port>/v1/<service>/*`).
 
+> Si usaste `./start-dev.sh` (opción A), el SPA ya está corriendo en `:5173` — no hace falta este paso.
+
 ```bash
-cd apps/web && npm install && npm run dev
+cd apps/web && npm run dev
 ```
 
 Abrir [http://localhost:5173](http://localhost:5173). El proxy y la `VITE_API_BASE_URL=/api` están configurados en `apps/web/vite.config.ts` y `apps/web/.env`. Ver [apps/web/README.md](apps/web/README.md) para detalles.
