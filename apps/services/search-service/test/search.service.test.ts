@@ -15,7 +15,7 @@ const mockTweetDoc: esRepo.TweetDocument = {
 beforeEach(() => jest.clearAllMocks());
 
 describe("indexTweet", () => {
-    it("indexes a tweet document in Elasticsearch", async () => {
+    it("indexes a tweet document in OpenSearch", async () => {
         mockEsRepo.indexTweet.mockResolvedValue();
         await svc.indexTweet({ tweetId: "tweet-1", authorId: "author-1", content: "Hello world #testing", createdAt: mockTweetDoc.createdAt });
         expect(mockEsRepo.indexTweet).toHaveBeenCalledWith(expect.objectContaining({ tweetId: "tweet-1", content: "Hello world #testing" }));
@@ -23,7 +23,7 @@ describe("indexTweet", () => {
 });
 
 describe("searchTweets", () => {
-    it("returns search results from Elasticsearch", async () => {
+    it("returns search results from OpenSearch", async () => {
         mockEsRepo.searchTweets.mockResolvedValue({ results: [mockTweetDoc], total: 1 });
         const result = await svc.searchTweets("hello", 20, 0);
         expect(result.results).toHaveLength(1);

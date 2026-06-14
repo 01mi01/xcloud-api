@@ -10,12 +10,12 @@ import { startTweetIndexConsumer } from "./consumers/tweet-index.consumer";
 const PORT = parseInt(process.env.SEARCH_PORT ?? "3005");
 
 const main = async (): Promise<void> => {
-    // Ensure Elasticsearch index exists
+    // Ensure OpenSearch index exists
     try {
         await ensureIndex();
-        console.log("Search Service — Elasticsearch index ready");
+        console.log("Search Service — OpenSearch index ready");
     } catch (err) {
-        console.error("Failed to create ES index:", (err as Error).message);
+        console.error("Failed to create OpenSearch index:", (err as Error).message);
     }
 
     // Start Kafka consumer for tweet indexing

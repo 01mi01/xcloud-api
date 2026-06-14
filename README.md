@@ -1,6 +1,6 @@
 # X(dot)com — Twitter Clone Platform
 
-Plataforma de red social en la nube inspirada en la arquitectura de X/Twitter. Implementada como un sistema de microservicios con comunicación asíncrona via Kafka, caché en Redis y búsqueda full-text con Elasticsearch.
+Plataforma de red social en la nube inspirada en la arquitectura de X/Twitter. Implementada como un sistema de microservicios con comunicación asíncrona via Kafka, caché en Redis y búsqueda full-text con OpenSearch.
 
 ## Materia
 Arquitectura en la Nube y Microservicios - Maestría Full Stack Development - UCB 2026
@@ -30,7 +30,7 @@ El sistema está compuesto por **8 microservicios** independientes, cada uno con
 | Feed Service | 3003 | Timeline personalizado con cursor pagination | Redis (cache) + Cassandra (fallback) |
 | Fan-out Service | worker + /health 3007 | Distribuye tweets al feed de seguidores | Redis (escritura) + PostgreSQL (lectura) |
 | Notification Service | 3004 | Notificaciones de likes y follows | PostgreSQL (`notifications`) |
-| Search Service | 3005 | Búsqueda full-text de tweets | Elasticsearch (`tweets` index) |
+| Search Service | 3005 | Búsqueda full-text de tweets | OpenSearch (`tweets` index) |
 | Media Service | 3006 | Gestión de archivos multimedia (stub) | S3 (producción) |
 
 ### Comunicación entre servicios
@@ -82,7 +82,7 @@ JWT_SECRET=xcloud-local-dev-secret
 REDIS_HOST=localhost
 REDIS_PORT=6379
 KAFKA_BROKERS=localhost:9094
-ELASTICSEARCH_URL=http://localhost:9200
+OPENSEARCH_URL=http://localhost:9200
 CASSANDRA_CONTACT_POINTS=localhost
 CASSANDRA_KEYSPACE=xcloud
 ```
@@ -93,7 +93,7 @@ CASSANDRA_KEYSPACE=xcloud
 docker compose up -d
 ```
 
-Esto levanta: PostgreSQL, Cassandra, Redis, Kafka (KRaft) y Elasticsearch.
+Esto levanta: PostgreSQL, Cassandra, Redis, Kafka (KRaft) y OpenSearch.
 
 Esperar ~60 segundos a que todos los servicios estén healthy:
 
@@ -338,7 +338,7 @@ Notas:
 | xcloud-cassandra | cassandra:4.1 | 9042 | Amazon Keyspaces |
 | xcloud-redis | redis:7-alpine | 6379 | Amazon ElastiCache |
 | xcloud-kafka | apache/kafka:3.7.0 | 9092 | Amazon MSK |
-| xcloud-elasticsearch | elasticsearch:8.13.0 | 9200 | Amazon OpenSearch |
+| xcloud-opensearch | opensearchproject/opensearch:2.13.0 | 9200 | Amazon OpenSearch |
 
 ## Smithy API Model
 
@@ -437,7 +437,7 @@ xcloud-api/
 │       ├── tweet-service/        # :3002 — tweets, likes, retweets, replies
 │       ├── feed-service/         # :3003 — timeline, cursor pagination, gRPC
 │       ├── notification-service/ # :3004 — notificaciones, WebSocket publisher
-│       ├── search-service/       # :3005 — full-text Elasticsearch
+│       ├── search-service/       # :3005 — full-text OpenSearch
 │       ├── media-service/        # :3006 — stub (S3 en producción)
 │       └── fanout-service/       # worker + /health :3007 — fan-out on write
 ├── packages/

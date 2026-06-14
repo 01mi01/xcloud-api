@@ -8,9 +8,9 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "test": "jest --runInBand"
   },
-  "description": "Search Service — indexes tweets in Elasticsearch, serves full-text search",
+  "description": "Search Service — indexes tweets in OpenSearch, serves full-text search",
   "dependencies": {
-    "@elastic/elasticsearch": "^8.13.0",
+    "@opensearch-project/opensearch": "^2.5.0",
     "@xcloud/shared": "*",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",

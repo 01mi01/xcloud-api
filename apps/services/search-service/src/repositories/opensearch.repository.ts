@@ -1,4 +1,4 @@
-import esClient, { TWEET_INDEX } from "../config/elasticsearch.config";
+import osClient, { TWEET_INDEX } from "../config/opensearch.config";
 
 export interface TweetDocument {
     tweetId:   string;
@@ -11,9 +11,9 @@ export interface TweetDocument {
  * Ensure the tweets index exists with proper mapping.
  */
 export const ensureIndex = async (): Promise<void> => {
-    const exists = await esClient.indices.exists({ index: TWEET_INDEX });
+    const { body: exists } = await osClient.indices.exists({ index: TWEET_INDEX });
     if (!exists) {
-        await esClient.indices.create({
+        await osClient.indices.create({
             index: TWEET_INDEX,
             body: {
                 mappings: {
@@ -34,7 +34,7 @@ export const ensureIndex = async (): Promise<void> => {
  * Index a tweet document for full-text search.
  */
 export const indexTweet = async (doc: TweetDocument): Promise<void> => {
-    await esClient.index({
+    await osClient.index({
         index: TWEET_INDEX,
         id:    doc.tweetId,
         body:  doc,
@@ -50,7 +50,7 @@ export const searchTweets = async (
     limit: number = 20,
     offset: number = 0
 ): Promise<{ results: TweetDocument[]; total: number }> => {
-    const response = await esClient.search({
+    const { body } = await osClient.search({
         index: TWEET_INDEX,
         body: {
             query: {
@@ -62,10 +62,10 @@ export const searchTweets = async (
         },
     });
 
-    const hits = response.hits.hits;
-    const total = typeof response.hits.total === "number"
-        ? response.hits.total
-        : response.hits.total?.value ?? 0;
+    const hits = body.hits.hits;
+    const total = typeof body.hits.total === "number"
+        ? body.hits.total
+        : body.hits.total?.value ?? 0;
 
     const results: TweetDocument[] = hits.map((hit: { _source?: unknown }) => hit._source as TweetDocument);
 
