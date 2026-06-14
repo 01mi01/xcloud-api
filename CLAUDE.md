@@ -49,10 +49,10 @@ xcloud-api/
 ## Hybrid messaging (the key architectural decision)
 
 Producers/consumers go through **`@xcloud/shared`** (`packages/shared/src/messaging/`), which switches transport by `NODE_ENV`:
-- **local dev → Kafka** (kafkajs; topics `tweet.created`, `tweet.liked`, `user.followed`, auto-created by `kafka-init`).
-- **production → SQS/SNS.** `tweet.created` fans out to **two** consumers (fanout + search) via an **SNS topic → 2 SQS queues**; `tweet.liked`/`user.followed` are 1:1 SQS queues.
+- **local dev → Kafka** (kafkajs; topics `tweet.created`, `tweet.liked`, `tweet.retweeted`, `user.followed`, `user.created`, `user.updated`, auto-created by `kafka-init`).
+- **production → SQS/SNS.** `tweet.created` fans out to **two** consumers (fanout + search) and `tweet.retweeted` to **two** (fanout + notification), each via an **SNS topic → 2 SQS queues**; `tweet.liked`/`user.followed`/`user.created`/`user.updated` are 1:1 SQS queues.
 
-Use `createPublisher({clientId})` / `createConsumer({clientId, groupId})`. Prod env vars (set by CDK, matched in shared): `TWEET_CREATED_TOPIC_ARN`, `FANOUT_QUEUE_URL`, `TWEET_INDEX_QUEUE_URL`, `LIKE_EVENT_QUEUE_URL`, `FOLLOW_EVENT_QUEUE_URL`. Do **not** reintroduce direct `kafkajs` in services — route through `@xcloud/shared`.
+Use `createPublisher({clientId})` / `createConsumer({clientId, groupId})`. Prod env vars (set by CDK, matched in shared): `TWEET_CREATED_TOPIC_ARN`, `TWEET_RETWEETED_TOPIC_ARN`, `FANOUT_QUEUE_URL`, `TWEET_INDEX_QUEUE_URL`, `FANOUT_RETWEET_QUEUE_URL`, `NOTIFY_RETWEET_QUEUE_URL`, `LIKE_EVENT_QUEUE_URL`, `FOLLOW_EVENT_QUEUE_URL`, `USER_CREATED_QUEUE_URL`, `USER_UPDATED_QUEUE_URL`. Do **not** reintroduce direct `kafkajs` in services — route through `@xcloud/shared`. **A producer added to a service whose tests don't mock it will open a real Kafka connection in unit tests (slow + open handle) — `jest.mock` the producer (see auth/user/tweet test files).**
 
 ## Service conventions
 

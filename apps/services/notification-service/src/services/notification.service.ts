@@ -33,6 +33,31 @@ export const processLikeEvent = async (event: LikeEvent, tweetAuthorId: string):
     wsPublisher.pushToUser(tweetAuthorId, notification);
 };
 
+export interface RetweetEvent {
+    tweetId:     string;
+    retweeterId: string;
+    authorId:    string;
+    timestamp:   string;
+}
+
+/**
+ * Procesa un evento de retweet.
+ * El autor original recibe la notificación; el retweeter es el actor.
+ */
+export const processRetweetEvent = async (event: RetweetEvent): Promise<void> => {
+    // No notificar si el usuario retuitea su propio tweet
+    if (event.retweeterId === event.authorId) return;
+
+    const notification = await repo.insert(
+        event.authorId,      // El autor original recibe la notificación
+        event.retweeterId,   // El que retuiteó es el actor
+        "retweet",
+        event.tweetId
+    );
+
+    wsPublisher.pushToUser(event.authorId, notification);
+};
+
 /**
  * Procesa un evento de follow.
  */

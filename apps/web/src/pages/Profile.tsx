@@ -1,9 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as usersApi from "../api/users";
-import { mockCurrentUser, mockUsers, mockTweets } from "../data/mockData";
-import * as tweetsApi from "../api/tweets";
-import { hydrateTweets } from "../api/hydrate";
 import { ApiError } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import type { User, Tweet } from "../types";

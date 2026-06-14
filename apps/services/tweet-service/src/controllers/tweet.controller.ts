@@ -63,3 +63,25 @@ export const unlikeTweet = async (req: Request, res: Response): Promise<void> =>
         res.status(500).json({ message: "Internal server error" });
     }
 };
+
+export const retweetTweet = async (req: Request, res: Response): Promise<void> => {
+    try {
+        await svc.retweetTweet((req as AuthRequest).user.sub, (req.params.tweetId as string));
+        res.status(204).send();
+    } catch (err) {
+        if ((err as Error).name === "TweetNotFoundError")    { res.status(404).json({ message: (err as Error).message }); return; }
+        if ((err as Error).name === "AlreadyRetweetedError") { res.status(409).json({ message: (err as Error).message }); return; }
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+export const unretweetTweet = async (req: Request, res: Response): Promise<void> => {
+    try {
+        await svc.unretweetTweet((req as AuthRequest).user.sub, (req.params.tweetId as string));
+        res.status(204).send();
+    } catch (err) {
+        if ((err as Error).name === "TweetNotFoundError") { res.status(404).json({ message: (err as Error).message }); return; }
+        if ((err as Error).name === "NotRetweetedError")  { res.status(404).json({ message: (err as Error).message }); return; }
+        res.status(500).json({ message: "Internal server error" });
+    }
+};

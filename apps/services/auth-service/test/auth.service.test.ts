@@ -10,6 +10,9 @@ jest.mock("pg", () => {
     return { Pool: jest.fn(() => ({ query, connect: jest.fn(async () => mockClient) })) };
 });
 jest.mock("bcrypt");
+// registerUser publishes user.created via @xcloud/shared (Kafka locally). Mock
+// the producer so tests don't open a real broker connection (slow + open handle).
+jest.mock("../src/events/user.producer");
 
 const mockPool  = new Pool({}) as jest.Mocked<Pool>;
 const mockQuery = mockPool.query as jest.Mock;

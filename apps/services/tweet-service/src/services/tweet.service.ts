@@ -15,6 +15,12 @@ export class AlreadyLikedError extends Error {
 export class NotLikedError extends Error {
     constructor(m: string) { super(m); this.name = "NotLikedError"; }
 }
+export class AlreadyRetweetedError extends Error {
+    constructor(m: string) { super(m); this.name = "AlreadyRetweetedError"; }
+}
+export class NotRetweetedError extends Error {
+    constructor(m: string) { super(m); this.name = "NotRetweetedError"; }
+}
 
 export interface CreateTweetInput {
     content: string;
@@ -64,4 +70,25 @@ export const unlikeTweet = async (userId: string, tweetId: string): Promise<void
 
     const deleted = await repo.deleteLike(userId, tweetId);
     if (!deleted) throw new NotLikedError("You have not liked this tweet");
+};
+
+export const retweetTweet = async (userId: string, tweetId: string): Promise<void> => {
+    const tweet = await repo.findById(tweetId);
+    if (!tweet) throw new TweetNotFoundError(`Tweet '${tweetId}' not found`);
+
+    const already = await repo.retweetExists(userId, tweetId);
+    if (already) throw new AlreadyRetweetedError("Already retweeted this tweet");
+
+    await repo.insertRetweet(userId, tweetId);
+    // El evento fan-outea el tweet original a los followers del retweeter y
+    // notifica al autor original.
+    await producer.publishTweetRetweeted({ tweetId, retweeterId: userId, authorId: tweet.authorId! });
+};
+
+export const unretweetTweet = async (userId: string, tweetId: string): Promise<void> => {
+    const tweet = await repo.findById(tweetId);
+    if (!tweet) throw new TweetNotFoundError(`Tweet '${tweetId}' not found`);
+
+    const deleted = await repo.deleteRetweet(userId, tweetId);
+    if (!deleted) throw new NotRetweetedError("You have not retweeted this tweet");
 };

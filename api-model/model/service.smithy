@@ -17,6 +17,8 @@ service TwitterService {
         DeleteTweet
         LikeTweet
         UnlikeTweet
+        RetweetTweet
+        UnretweetTweet
         FollowUser
         UnfollowUser
         GetFeed

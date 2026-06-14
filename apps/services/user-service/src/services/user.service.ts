@@ -1,6 +1,7 @@
 import * as repo from "../repositories/user.repository";
 import { User } from "../models/user.model";
 import { UpdateFields } from "../repositories/user.repository";
+import { publishUserUpdated } from "../events/user.producer";
 
 export class UserNotFoundError extends Error {
     constructor(m: string) { super(m); this.name = "UserNotFoundError"; }
@@ -28,6 +29,7 @@ export const updateProfile = async (userId: string, handle: string, fields: Upda
     await repo.upsert(userId, handle);
     const user = await repo.update(userId, fields);
     if (!user) throw new UserNotFoundError("User not found");
+    await publishUserUpdated(user);
     return user;
 };
 

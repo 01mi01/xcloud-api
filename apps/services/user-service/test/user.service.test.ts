@@ -3,6 +3,9 @@ import * as repo from "../src/repositories/user.repository";
 import { User } from "../src/models/user.model";
 
 jest.mock("../src/repositories/user.repository");
+// updateProfile publishes user.updated via @xcloud/shared (Kafka locally). Mock
+// the producer so tests don't open a real broker connection (slow + open handle).
+jest.mock("../src/events/user.producer");
 
 const mockRepo = repo as jest.Mocked<typeof repo>;
 

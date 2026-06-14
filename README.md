@@ -44,7 +44,10 @@ El sistema está compuesto por **7 microservicios** independientes, cada uno con
 |---|---|---|
 | `tweet.created` | Tweet Service | Fan-out Service, Search Service |
 | `tweet.liked` | Tweet Service | Notification Service |
+| `tweet.retweeted` | Tweet Service | Fan-out Service, Notification Service |
 | `user.followed` | User Service (pendiente) | Notification Service |
+| `user.created` | Auth Service | Search Service (índice de usuarios) |
+| `user.updated` | User Service | Search Service (índice de usuarios) |
 
 ## Prerequisitos
 
@@ -209,6 +212,8 @@ Stop-Service postgresql-x64-17
 | DELETE | `/v1/tweets/:tweetId` | Bearer | Eliminar tweet propio |
 | POST | `/v1/tweets/:tweetId/like` | Bearer | Dar like |
 | DELETE | `/v1/tweets/:tweetId/like` | Bearer | Quitar like |
+| POST | `/v1/tweets/:tweetId/retweet` | Bearer | Retuitear |
+| DELETE | `/v1/tweets/:tweetId/retweet` | Bearer | Quitar retweet |
 
 ### Feed Service (puerto 3003)
 
@@ -227,7 +232,8 @@ Stop-Service postgresql-x64-17
 
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
-| GET | `/v1/search?q=...&type=tweets` | No | Buscar tweets por keyword |
+| GET | `/v1/search?q=...&type=tweets` | No | Buscar tweets por keyword/hashtag |
+| GET | `/v1/search?q=...&type=users` | No | Buscar usuarios por handle/nombre/bio |
 
 ## Prueba end-to-end
 

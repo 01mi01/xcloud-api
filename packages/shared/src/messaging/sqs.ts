@@ -21,10 +21,15 @@ const region = (): string => process.env.AWS_REGION || 'us-east-1';
 // straight to a single SQS queue. Env var names match the CDK outputs.
 const SNS_TOPIC_ENV: Partial<Record<EventName, string>> = {
   'tweet.created': 'TWEET_CREATED_TOPIC_ARN',
+  // Fans out to two consumers (fanout + notification) via SNS → 2 SQS queues.
+  'tweet.retweeted': 'TWEET_RETWEETED_TOPIC_ARN',
 };
 const SQS_QUEUE_ENV: Partial<Record<EventName, string>> = {
   'tweet.liked': 'LIKE_EVENT_QUEUE_URL',
   'user.followed': 'FOLLOW_EVENT_QUEUE_URL',
+  // 1:1 to search-service (the only consumer), for the user search index.
+  'user.created': 'USER_CREATED_QUEUE_URL',
+  'user.updated': 'USER_UPDATED_QUEUE_URL',
 };
 
 /** Production publisher: SNS for fan-out events, SQS for 1:1 events. */

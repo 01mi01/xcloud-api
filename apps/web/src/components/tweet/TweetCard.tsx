@@ -52,10 +52,20 @@ function TweetCard({ tweet }: Props) {
     }
   };
 
-  const handleRetweet = (e: React.MouseEvent) => {
+  const handleRetweet = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    setRetweeted((prev) => !prev);
-    setRetweetCount((prev) => (retweeted ? prev - 1 : prev + 1));
+    const wasRetweeted = retweeted;
+    // Optimistic update
+    setRetweeted(!wasRetweeted);
+    setRetweetCount((prev) => (wasRetweeted ? prev - 1 : prev + 1));
+    try {
+      if (wasRetweeted) await tweetsApi.unretweetTweet(tweet.tweetId);
+      else await tweetsApi.retweetTweet(tweet.tweetId);
+    } catch {
+      // Revert on failure
+      setRetweeted(wasRetweeted);
+      setRetweetCount((prev) => (wasRetweeted ? prev + 1 : prev - 1));
+    }
   };
 
   return (

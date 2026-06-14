@@ -4,6 +4,8 @@ import {
   DeleteTweetCommand,
   LikeTweetCommand,
   UnlikeTweetCommand,
+  RetweetTweetCommand,
+  UnretweetTweetCommand,
 } from "@xcloud/sdk-client";
 import { twitterClient, toApiError, toRawTweet } from "./twitter-client";
 import type { RawTweet } from "../types";
@@ -57,6 +59,22 @@ export async function likeTweet(tweetId: string): Promise<void> {
 export async function unlikeTweet(tweetId: string): Promise<void> {
   try {
     await twitterClient.send(new UnlikeTweetCommand({ tweetId }));
+  } catch (err) {
+    throw toApiError(err);
+  }
+}
+
+export async function retweetTweet(tweetId: string): Promise<void> {
+  try {
+    await twitterClient.send(new RetweetTweetCommand({ tweetId }));
+  } catch (err) {
+    throw toApiError(err);
+  }
+}
+
+export async function unretweetTweet(tweetId: string): Promise<void> {
+  try {
+    await twitterClient.send(new UnretweetTweetCommand({ tweetId }));
   } catch (err) {
     throw toApiError(err);
   }

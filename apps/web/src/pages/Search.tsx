@@ -1,35 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Tweet, User } from "../types";
-import { mockTweets, mockUsers, mockCurrentUser } from "../data/mockData";
+import { searchTweets as apiSearchTweets, searchUsers as apiSearchUsers } from "../api/search";
+import { hydrateTweets } from "../api/hydrate";
 import LeftSidebar from "../components/layout/LeftSidebar";
 import TweetCard from "../components/tweet/TweetCard";
 import Avatar from "../components/common/Avatar";
 import styles from "./Search.module.css";
 
 type Tab = "tweets" | "users";
-
-// Filter mock tweets by query string
-function searchTweets(query: string): Tweet[] {
-  const q = query.toLowerCase();
-  return mockTweets.filter(
-    (t) =>
-      t.content.toLowerCase().includes(q) ||
-      t.author.handle.toLowerCase().includes(q) ||
-      t.author.displayName.toLowerCase().includes(q)
-  );
-}
-
-// Filter mock users by query string
-function searchUsers(query: string): User[] {
-  const q = query.toLowerCase();
-  return [mockCurrentUser, ...mockUsers].filter(
-    (u) =>
-      u.handle.toLowerCase().includes(q) ||
-      u.displayName.toLowerCase().includes(q) ||
-      (u.bio ?? "").toLowerCase().includes(q)
-  );
-}
 
 function Search() {
   const navigate = useNavigate();
@@ -38,26 +17,56 @@ function Search() {
   const [activeTab, setActiveTab] = useState<Tab>("tweets");
   const [tweetResults, setTweetResults] = useState<Tweet[]>([]);
   const [userResults, setUserResults] = useState<User[]>([]);
+  const [loading, setLoading] = useState(false);
 
   // Auto-focus the search input on mount
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  // Re-run search whenever query or tab changes
+  // Debounced live search against search-service (tweets + users) whenever the
+  // query changes. Minimum 2 chars (the service rejects shorter queries).
   useEffect(() => {
-    if (query.trim().length < 2) {
+    const q = query.trim();
+    if (q.length < 2) {
       setTweetResults([]);
       setUserResults([]);
+      setLoading(false);
       return;
     }
-    setTweetResults(searchTweets(query));
-    setUserResults(searchUsers(query));
+
+    let cancelled = false;
+    setLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const [rawTweets, users] = await Promise.all([
+          apiSearchTweets(q),
+          apiSearchUsers(q),
+        ]);
+        const tweets = await hydrateTweets(rawTweets);
+        if (!cancelled) {
+          setTweetResults(tweets);
+          setUserResults(users);
+        }
+      } catch {
+        if (!cancelled) {
+          setTweetResults([]);
+          setUserResults([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [query]);
 
   const hasQuery = query.trim().length >= 2;
-  const noTweetResults = hasQuery && tweetResults.length === 0;
-  const noUserResults = hasQuery && userResults.length === 0;
+  const noTweetResults = hasQuery && !loading && tweetResults.length === 0;
+  const noUserResults = hasQuery && !loading && userResults.length === 0;
 
   return (
     <div className={styles.layout}>
@@ -112,6 +121,11 @@ function Search() {
         {/* Empty state — no query yet */}
         {!hasQuery && (
           <p className={styles.hint}>Try searching for a keyword, hashtag, or person.</p>
+        )}
+
+        {/* Loading */}
+        {hasQuery && loading && (
+          <p className={styles.hint}>Searching…</p>
         )}
 
         {/* Tweet results */}

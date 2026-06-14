@@ -6,8 +6,9 @@ import { Tweet } from "../models/tweet.model";
 const publisher = createPublisher({ clientId: "tweet-service" });
 
 export const TOPICS = {
-    TWEET_CREATED: "tweet.created",
-    TWEET_LIKED:   "tweet.liked",
+    TWEET_CREATED:   "tweet.created",
+    TWEET_LIKED:     "tweet.liked",
+    TWEET_RETWEETED: "tweet.retweeted",
 } as const;
 
 export const publishTweetCreated = async (tweet: Tweet): Promise<void> => {
@@ -42,5 +43,24 @@ export const publishTweetLiked = async ({ tweetId, userId, targetUserId }: { twe
         console.log("[tweet.producer] Published tweet.liked:", tweetId);
     } catch (err) {
         console.error("[tweet.producer] Failed to publish tweet.liked:", (err as Error).message);
+    }
+};
+
+// `tweet.retweeted` fans out to TWO consumers (fanout + notification) via SNS.
+// retweeterId = quien retuitea; authorId = autor original (destinatario de la notificación).
+export const publishTweetRetweeted = async ({ tweetId, retweeterId, authorId }: { tweetId: string; retweeterId: string; authorId: string }): Promise<void> => {
+    try {
+        await publisher.publish(
+            "tweet.retweeted",
+            { tweetId, retweeterId, authorId, timestamp: new Date().toISOString() },
+            {
+                key:             retweeterId,
+                groupId:         retweeterId,          // FIFO MessageGroupId (prod)
+                deduplicationId: `${retweeterId}:${tweetId}`,  // FIFO dedup (prod)
+            },
+        );
+        console.log("[tweet.producer] Published tweet.retweeted:", tweetId);
+    } catch (err) {
+        console.error("[tweet.producer] Failed to publish tweet.retweeted:", (err as Error).message);
     }
 };

@@ -100,7 +100,7 @@ services:
       - bash
       - -c
       - |
-        for topic in tweet.created tweet.liked user.followed; do
+        for topic in tweet.created tweet.liked tweet.retweeted user.followed user.created user.updated; do
           /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --topic "$$topic" --bootstrap-server kafka:9092 --partitions 1 --replication-factor 1
         done
         echo '[kafka-init] All topics created.'

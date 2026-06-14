@@ -31,17 +31,23 @@ export const FARGATE_DEFAULTS = {
   desiredCount: 1,
 } as const;
 
-// tweet.created fans out (fanout + search) via an SNS topic with two SQS
-// subscriptions. tweet.liked / user.followed are 1:1 SQS queues.
+// tweet.created and tweet.retweeted fan out (2 consumers each) via SNS topics
+// with two SQS subscriptions. tweet.liked / user.followed / user.created /
+// user.updated are 1:1 SQS queues.
 export const SNS_TOPICS = {
-  TWEET_CREATED: 'xcloud-tweet-created',
+  TWEET_CREATED:   'xcloud-tweet-created',
+  TWEET_RETWEETED: 'xcloud-tweet-retweeted',
 } as const;
 
 export const SQS_QUEUES = {
-  FANOUT:       'xcloud-fanout',        // subscribes to tweet.created (SNS)
-  TWEET_INDEX:  'xcloud-tweet-index',   // subscribes to tweet.created (SNS)
-  LIKE_EVENT:   'xcloud-like-event',    // tweet.liked  (tweet -> notification)
-  FOLLOW_EVENT: 'xcloud-follow-event',  // user.followed (user -> notification)
+  FANOUT:         'xcloud-fanout',          // subscribes to tweet.created (SNS)
+  TWEET_INDEX:    'xcloud-tweet-index',     // subscribes to tweet.created (SNS)
+  FANOUT_RETWEET: 'xcloud-fanout-retweet',  // subscribes to tweet.retweeted (SNS)
+  NOTIFY_RETWEET: 'xcloud-notify-retweet',  // subscribes to tweet.retweeted (SNS)
+  LIKE_EVENT:     'xcloud-like-event',      // tweet.liked  (tweet -> notification)
+  FOLLOW_EVENT:   'xcloud-follow-event',    // user.followed (user -> notification)
+  USER_CREATED:   'xcloud-user-created',    // user.created (auth -> search)
+  USER_UPDATED:   'xcloud-user-updated',    // user.updated (user -> search)
 } as const;
 
 export const APP_PREFIX = 'xcloud';

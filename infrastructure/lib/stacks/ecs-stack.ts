@@ -96,9 +96,10 @@ export class EcsStack extends cdk.Stack {
       environment: {
         DB_HOST:              database.rds.instance.instanceEndpoint.hostname,
         DB_NAME:              'xcloud_users',
-        COGNITO_USER_POOL_ID: auth.cognito.userPool.userPoolId,
-        COGNITO_CLIENT_ID:    auth.cognito.userPoolClient.userPoolClientId,
-        AWS_REGION:           this.region,
+        COGNITO_USER_POOL_ID:   auth.cognito.userPool.userPoolId,
+        COGNITO_CLIENT_ID:      auth.cognito.userPoolClient.userPoolClientId,
+        USER_CREATED_QUEUE_URL: sqs.userCreated.queueUrl,
+        AWS_REGION:             this.region,
       },
       secrets: {
         DB_SECRET: ecs.Secret.fromSecretsManager(database.rds.credentials),
@@ -108,12 +109,13 @@ export class EcsStack extends cdk.Stack {
           actions:   ['cognito-idp:AdminGetUser', 'cognito-idp:AdminAddUserToGroup'],
           resources: [auth.cognito.userPool.userPoolArn],
         }),
+        ...sqsAccess([sqs.userCreated]),
       ],
       desiredCount: envConfig.taskCount,
     });
     rdsIngressFrom(authSvc, 'auth');
 
-    // ── user-service (publishes user.followed) ─────────────────────────
+    // ── user-service (publishes user.followed + user.updated) ──────────
     const userSvc = new MicroserviceConstruct(this, 'UserService', {
       cluster,
       serviceName:         'user-service',
@@ -125,12 +127,13 @@ export class EcsStack extends cdk.Stack {
         DB_HOST:                database.rds.instance.instanceEndpoint.hostname,
         DB_NAME:                'xcloud_users',
         FOLLOW_EVENT_QUEUE_URL: sqs.followEvent.queueUrl,
+        USER_UPDATED_QUEUE_URL: sqs.userUpdated.queueUrl,
         AWS_REGION:             this.region,
       },
       secrets: {
         DB_SECRET: ecs.Secret.fromSecretsManager(database.rds.credentials),
       },
-      taskPolicies: sqsAccess([sqs.followEvent]),
+      taskPolicies: sqsAccess([sqs.followEvent, sqs.userUpdated]),
       desiredCount: envConfig.taskCount,
     });
     rdsIngressFrom(userSvc, 'user');
@@ -144,13 +147,15 @@ export class EcsStack extends cdk.Stack {
       listenerPathPattern: '/v1/tweets*',
       listenerPriority:    30,
       environment: {
-        CASSANDRA_CONTACT_POINTS: `cassandra.${this.region}.amazonaws.com`,
-        TWEET_CREATED_TOPIC_ARN:  sqs.tweetCreatedTopic.topicArn,
-        LIKE_EVENT_QUEUE_URL:     sqs.likeEvent.queueUrl,
-        AWS_REGION:               this.region,
+        CASSANDRA_CONTACT_POINTS:  `cassandra.${this.region}.amazonaws.com`,
+        TWEET_CREATED_TOPIC_ARN:   sqs.tweetCreatedTopic.topicArn,
+        TWEET_RETWEETED_TOPIC_ARN: sqs.tweetRetweetedTopic.topicArn,
+        LIKE_EVENT_QUEUE_URL:      sqs.likeEvent.queueUrl,
+        AWS_REGION:                this.region,
       },
       taskPolicies: [
         snsPublish(sqs.tweetCreatedTopic.topicArn),
+        snsPublish(sqs.tweetRetweetedTopic.topicArn),
         ...sqsAccess([sqs.likeEvent]),
         new iam.PolicyStatement({ actions: ['cassandra:*'], resources: ['*'] }),
       ],
@@ -183,11 +188,12 @@ export class EcsStack extends cdk.Stack {
       listenerPathPattern: '/v1/fanout*',
       listenerPriority:    50,
       environment: {
-        FANOUT_QUEUE_URL: sqs.fanoutQueue.queueUrl,
-        REDIS_HOST:       cache.redis.cluster.attrRedisEndpointAddress,
-        AWS_REGION:       this.region,
+        FANOUT_QUEUE_URL:         sqs.fanoutQueue.queueUrl,
+        FANOUT_RETWEET_QUEUE_URL: sqs.fanoutRetweet.queueUrl,
+        REDIS_HOST:               cache.redis.cluster.attrRedisEndpointAddress,
+        AWS_REGION:               this.region,
       },
-      taskPolicies: sqsAccess([sqs.fanoutQueue]),
+      taskPolicies: sqsAccess([sqs.fanoutQueue, sqs.fanoutRetweet]),
       desiredCount: envConfig.taskCount,
     });
     redisIngressFrom(fanoutSvc, 'fanout');
@@ -213,7 +219,7 @@ export class EcsStack extends cdk.Stack {
       desiredCount: envConfig.taskCount,
     });
 
-    // ── notification-service (consumes tweet.liked + user.followed) ────
+    // ── notification-service (consumes tweet.liked + user.followed + tweet.retweeted) ──
     new MicroserviceConstruct(this, 'NotificationService', {
       cluster,
       serviceName:         'notification-service',
@@ -222,11 +228,12 @@ export class EcsStack extends cdk.Stack {
       listenerPathPattern: '/v1/notifications*',
       listenerPriority:    70,
       environment: {
-        LIKE_EVENT_QUEUE_URL:   sqs.likeEvent.queueUrl,
-        FOLLOW_EVENT_QUEUE_URL: sqs.followEvent.queueUrl,
-        AWS_REGION:             this.region,
+        LIKE_EVENT_QUEUE_URL:    sqs.likeEvent.queueUrl,
+        FOLLOW_EVENT_QUEUE_URL:  sqs.followEvent.queueUrl,
+        NOTIFY_RETWEET_QUEUE_URL: sqs.notifyRetweet.queueUrl,
+        AWS_REGION:              this.region,
       },
-      taskPolicies: sqsAccess([sqs.likeEvent, sqs.followEvent]),
+      taskPolicies: sqsAccess([sqs.likeEvent, sqs.followEvent, sqs.notifyRetweet]),
       desiredCount: envConfig.taskCount,
     });
 
@@ -240,12 +247,14 @@ export class EcsStack extends cdk.Stack {
         listenerPathPattern: '/v1/search*',
         listenerPriority:    80,
         environment: {
-          OPENSEARCH_ENDPOINT:   search.domain.domainEndpoint,
-          TWEET_INDEX_QUEUE_URL: sqs.tweetIndex.queueUrl,
-          AWS_REGION:            this.region,
+          OPENSEARCH_ENDPOINT:    search.domain.domainEndpoint,
+          TWEET_INDEX_QUEUE_URL:  sqs.tweetIndex.queueUrl,
+          USER_CREATED_QUEUE_URL: sqs.userCreated.queueUrl,
+          USER_UPDATED_QUEUE_URL: sqs.userUpdated.queueUrl,
+          AWS_REGION:             this.region,
         },
         taskPolicies: [
-          ...sqsAccess([sqs.tweetIndex]),
+          ...sqsAccess([sqs.tweetIndex, sqs.userCreated, sqs.userUpdated]),
           new iam.PolicyStatement({
             actions:   ['es:ESHttpGet', 'es:ESHttpPost', 'es:ESHttpPut', 'es:ESHttpDelete'],
             resources: [`${search.domain.domainArn}/*`],

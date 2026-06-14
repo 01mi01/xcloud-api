@@ -6,6 +6,7 @@ dotenv.config({ path: path.resolve(__dirname, "../../../../.env") });
 import app from "./app";
 import { startLikeConsumer } from "./consumers/like.consumer";
 import { startFollowConsumer } from "./consumers/follow.consumer";
+import { startRetweetConsumer } from "./consumers/retweet.consumer";
 
 const PORT = parseInt(process.env.NOTIFICATION_PORT ?? "3004");
 
@@ -15,7 +16,7 @@ const main = async (): Promise<void> => {
         try {
             // Start concurrently: in production each consumer long-polls its own
             // SQS queue (a blocking loop), so they must not be awaited sequentially.
-            await Promise.all([startLikeConsumer(), startFollowConsumer()]);
+            await Promise.all([startLikeConsumer(), startFollowConsumer(), startRetweetConsumer()]);
             console.log("Notification Service — event consumers running");
         } catch (err) {
             if (attempt >= 5) {
