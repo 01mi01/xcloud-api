@@ -96,35 +96,54 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => { if (!cancelled) setNotifications([]); });
 
-    // Live updates over WebSocket.
-    const token = getToken();
-    if (!token) return;
-    const ws = new WebSocket(wsUrl(token));
-    wsRef.current = ws;
-    ws.onmessage = (ev) => {
-      try {
-        const msg = JSON.parse(ev.data as string);
-        if (!msg || msg.type === "connected") return; // handshake ack
-        const notif: notificationsApi.Notification = {
-          id:        msg.notifId ?? crypto.randomUUID(),
-          type:      msg.type,
-          actorId:   msg.actor,
-          targetId:  msg.tweetId ?? null,
-          read:      false,
-          createdAt: new Date().toISOString(),
-        };
-        setNotifications((prev) => [notif, ...prev]);
-        resolveActors([notif.actorId]);
-        resolveTweets([notif.targetId]);
-      } catch {
-        /* ignore malformed frames */
-      }
+    // Live updates over WebSocket, with auto-reconnect. The connection can drop
+    // for benign reasons (ALB idle timeout, a deploy, a network blip); without
+    // reconnect, live notifications would silently stop until a page refresh.
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    let attempts = 0;
+
+    const connect = () => {
+      const token = getToken();
+      if (!token || cancelled) return;
+      const ws = new WebSocket(wsUrl(token));
+      wsRef.current = ws;
+      ws.onopen = () => { attempts = 0; };
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data as string);
+          if (!msg || msg.type === "connected") return; // handshake ack
+          const notif: notificationsApi.Notification = {
+            id:        msg.notifId ?? crypto.randomUUID(),
+            type:      msg.type,
+            actorId:   msg.actor,
+            targetId:  msg.tweetId ?? null,
+            read:      false,
+            createdAt: new Date().toISOString(),
+          };
+          setNotifications((prev) => [notif, ...prev]);
+          resolveActors([notif.actorId]);
+          resolveTweets([notif.targetId]);
+        } catch {
+          /* ignore malformed frames */
+        }
+      };
+      ws.onclose = () => {
+        if (wsRef.current === ws) wsRef.current = null;
+        if (cancelled) return;
+        // Exponential backoff, capped at 30s.
+        const delay = Math.min(1000 * 2 ** attempts, 30000);
+        attempts += 1;
+        reconnectTimer = setTimeout(connect, delay);
+      };
+      ws.onerror = () => { try { ws.close(); } catch { /* onclose handles retry */ } };
     };
-    ws.onclose = () => { if (wsRef.current === ws) wsRef.current = null; };
+    connect();
 
     return () => {
       cancelled = true;
-      ws.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      wsRef.current?.close();
+      wsRef.current = null;
     };
   }, [status, resolveActors, resolveTweets]);
 

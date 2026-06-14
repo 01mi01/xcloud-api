@@ -19,6 +19,10 @@ export class GatewayStack extends cdk.Stack {
       vpc:             props.vpc,
       internetFacing:  true,
       loadBalancerName: `xcloud-${props.envConfig.name}`,
+      // Default is 60s; the notification WebSocket is long-lived. The server also
+      // pings every 30s (keeps the tunnel active), but the extra margin avoids
+      // dropping briefly-idle sockets and reduces client reconnect churn.
+      idleTimeout:     cdk.Duration.seconds(300),
     });
     // NOTE: the HTTP :80 listener is created in EcsStack (same stack as the
     // services/target groups) to avoid a cross-stack dependency cycle. For beta
