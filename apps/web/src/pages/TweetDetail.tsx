@@ -202,7 +202,11 @@ function TweetDetail() {
         {/* Main tweet — expanded view */}
         <div className={styles.mainTweet}>
 
-          <div className={styles.authorRow}>
+          <div
+            className={styles.authorRow}
+            style={{ cursor: "pointer" }}
+            onClick={() => navigate(`/profile/${tweet.author.handle}`)}
+          >
             <Avatar size={48} src={tweet.author.avatarUrl || undefined} />
             <div className={styles.authorInfo}>
               <span className={styles.displayName}>{tweet.author.displayName}</span>
