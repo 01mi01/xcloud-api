@@ -13,6 +13,13 @@ export interface FollowEvent {
     timestamp:   string;
 }
 
+export interface RetweetEvent {
+    tweetId:      string;
+    userId:       string;   // quien retweeteó (actor)
+    targetUserId: string;   // autor del tweet (destinatario)
+    timestamp:    string;
+}
+
 /**
  * Procesa un evento de like.
  * Diseño técnico §4.3:
@@ -45,6 +52,22 @@ export const processFollowEvent = async (event: FollowEvent): Promise<void> => {
     );
 
     wsPublisher.pushToUser(event.followingId, notification);
+};
+
+/**
+ * Procesa un evento de retweet.
+ */
+export const processRetweetEvent = async (event: RetweetEvent): Promise<void> => {
+    if (event.userId === event.targetUserId) return; // no notificar self-retweet
+
+    const notification = await repo.insert(
+        event.targetUserId,  // el autor del tweet recibe la notificación
+        event.userId,        // quien retweeteó es el actor
+        "retweet",
+        event.tweetId
+    );
+
+    wsPublisher.pushToUser(event.targetUserId, notification);
 };
 
 /**

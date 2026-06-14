@@ -5,6 +5,7 @@ import { JwtPayload } from "jsonwebtoken";
 import type { CreateTweetServerInput } from "@xcloud/sdk-server";
 import * as svc from "../services/tweet.service";
 import * as repo from "../repositories/tweet.repository";
+import { publishTweetRetweeted } from "../events/tweet.producer";
 
 type AuthRequest = Request & { user: JwtPayload & { sub: string } };
 
@@ -85,10 +86,17 @@ export const getReplies = async (req: Request, res: Response): Promise<void> => 
 
 export const retweetTweet = async (req: Request, res: Response): Promise<void> => {
     try {
-        const already = await repo.retweetExists((req as AuthRequest).user.sub, req.params.tweetId as string);
+        const userId = (req as AuthRequest).user.sub;
+        const tweetId = req.params.tweetId as string;
+        const already = await repo.retweetExists(userId, tweetId);
         if (already) { res.status(409).json({ message: "Already retweeted" }); return; }
-        await repo.insertRetweet((req as AuthRequest).user.sub, req.params.tweetId as string);
+        await repo.insertRetweet(userId, tweetId);
         res.status(204).send();
+        // Notify the tweet author (skip self-retweet).
+        const tweet = await repo.findById(tweetId);
+        if (tweet?.authorId && tweet.authorId !== userId) {
+            await publishTweetRetweeted({ tweetId, userId, targetUserId: tweet.authorId });
+        }
     } catch {
         res.status(500).json({ message: "Internal server error" });
     }

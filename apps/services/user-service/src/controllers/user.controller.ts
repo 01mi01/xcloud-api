@@ -20,7 +20,7 @@ export const getFollowStatus = async (req: Request, res: Response): Promise<void
     const followerId = u?.sub ?? u?.userId;
     if (!followerId) { res.status(401).json({ message: "Unauthorized" }); return; }
     try {
-        const following = await svc.isFollowing(followerId, req.params.userId);
+        const following = await svc.isFollowing(followerId, req.params.userId as string);
         res.status(200).json({ following });
     } catch {
         res.status(500).json({ message: "Internal server error" });
@@ -29,7 +29,7 @@ export const getFollowStatus = async (req: Request, res: Response): Promise<void
 
 export const getFollowing = async (req: Request, res: Response): Promise<void> => {
     try {
-        const users = await svc.getFollowing(req.params.userId);
+        const users = await svc.getFollowing(req.params.userId as string);
         res.status(200).json({ users });
     } catch {
         res.status(500).json({ message: "Internal server error" });
@@ -38,7 +38,7 @@ export const getFollowing = async (req: Request, res: Response): Promise<void> =
 
 export const getFollowers = async (req: Request, res: Response): Promise<void> => {
     try {
-        const users = await svc.getFollowers(req.params.userId);
+        const users = await svc.getFollowers(req.params.userId as string);
         res.status(200).json({ users });
     } catch {
         res.status(500).json({ message: "Internal server error" });

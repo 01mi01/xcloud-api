@@ -1,5 +1,5 @@
 /** Logical domain events, independent of transport (Kafka topic / SQS queue / SNS topic). */
-export type EventName = 'tweet.created' | 'tweet.liked' | 'user.followed';
+export type EventName = 'tweet.created' | 'tweet.liked' | 'user.followed' | 'tweet.retweeted';
 
 export interface PublishOptions {
   /** Kafka message key / partition hint. */

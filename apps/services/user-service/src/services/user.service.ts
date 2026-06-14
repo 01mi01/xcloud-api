@@ -1,6 +1,7 @@
 import * as repo from "../repositories/user.repository";
 import { User } from "../models/user.model";
 import { UpdateFields } from "../repositories/user.repository";
+import { publishUserFollowed } from "../events/follow.producer";
 
 export class UserNotFoundError extends Error {
     constructor(m: string) { super(m); this.name = "UserNotFoundError"; }
@@ -55,6 +56,7 @@ export const follow = async (followerId: string, followingId: string): Promise<v
     if (already) throw new AlreadyFollowingError("Already following this user");
 
     await repo.insertFollow(followerId, followingId);
+    await publishUserFollowed(followerId, followingId);
 };
 
 export const unfollow = async (followerId: string, followingId: string): Promise<void> => {

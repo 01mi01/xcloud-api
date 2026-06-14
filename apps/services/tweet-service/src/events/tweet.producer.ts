@@ -6,8 +6,9 @@ import { Tweet } from "../models/tweet.model";
 const publisher = createPublisher({ clientId: "tweet-service" });
 
 export const TOPICS = {
-    TWEET_CREATED: "tweet.created",
-    TWEET_LIKED:   "tweet.liked",
+    TWEET_CREATED:   "tweet.created",
+    TWEET_LIKED:     "tweet.liked",
+    TWEET_RETWEETED: "tweet.retweeted",
 } as const;
 
 export const publishTweetCreated = async (tweet: Tweet): Promise<void> => {
@@ -42,5 +43,18 @@ export const publishTweetLiked = async ({ tweetId, userId, targetUserId }: { twe
         console.log("[tweet.producer] Published tweet.liked:", tweetId);
     } catch (err) {
         console.error("[tweet.producer] Failed to publish tweet.liked:", (err as Error).message);
+    }
+};
+
+export const publishTweetRetweeted = async ({ tweetId, userId, targetUserId }: { tweetId: string; userId: string; targetUserId: string }): Promise<void> => {
+    try {
+        await publisher.publish(
+            "tweet.retweeted",
+            { tweetId, userId, targetUserId, timestamp: new Date().toISOString() },
+            { key: tweetId },
+        );
+        console.log("[tweet.producer] Published tweet.retweeted:", tweetId);
+    } catch (err) {
+        console.error("[tweet.producer] Failed to publish tweet.retweeted:", (err as Error).message);
     }
 };

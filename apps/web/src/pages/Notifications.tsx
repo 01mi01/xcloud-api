@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import * as notificationsApi from "../api/notifications";
 import { connectNotifications } from "../api/notifications-ws";
+import { getUserById } from "../api/users";
 type Notification = notificationsApi.Notification & {
   actorName: string;
   actorHandle: string;
@@ -66,29 +67,54 @@ function notifText(type: string, actorName: string, _excerpt?: string): string {
   return `${actorName} interacted with you`;
 }
 
+// Cache de perfiles de actor (userId → {displayName, handle}) para no refetchear.
+const actorCache = new Map<string, { displayName: string; handle: string }>();
+
+async function resolveActor(actorId: string): Promise<{ displayName: string; handle: string }> {
+  if (!actorId) return { displayName: "Alguien", handle: "" };
+  const cached = actorCache.get(actorId);
+  if (cached) return cached;
+  try {
+    const u = await getUserById(actorId);
+    const info = { displayName: u.displayName || u.handle, handle: u.handle };
+    actorCache.set(actorId, info);
+    return info;
+  } catch {
+    return { displayName: "Alguien", handle: "" };
+  }
+}
+
 function Notifications() {
   const [activeTab, setActiveTab] = useState<Tab>("all");
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
 useEffect(() => {
+  let cancelled = false;
   notificationsApi
     .listNotifications()
-    .then((res) =>
-      setNotifications(
-        res.notifications.map((n) => ({
-          ...n,
-          actorName: n.actorId,
-          actorHandle: n.actorId,
-          excerpt: n.targetId ?? undefined,
-        }))
-      )
-    )
-    .catch(() => setNotifications([]));
+    .then(async (res) => {
+      // Resuelve los nombres de los actores en paralelo (con caché).
+      const enriched = await Promise.all(
+        res.notifications.map(async (n) => {
+          const actor = await resolveActor(n.actorId);
+          return {
+            ...n,
+            actorName: actor.displayName,
+            actorHandle: actor.handle,
+            excerpt: n.targetId ?? undefined,
+          };
+        })
+      );
+      if (!cancelled) setNotifications(enriched);
+    })
+    .catch(() => { if (!cancelled) setNotifications([]); });
+  return () => { cancelled = true; };
 }, []);
 
 // Real-time: prepend notifications pushed over the WebSocket as they arrive.
 useEffect(() => {
-  const disconnect = connectNotifications((push) => {
+  const disconnect = connectNotifications(async (push) => {
+    const actor = await resolveActor(push.actor ?? "");
     setNotifications((prev) => {
       if (push.notifId && prev.some((n) => n.id === push.notifId)) return prev; // dedupe
       const incoming: Notification = {
@@ -98,8 +124,8 @@ useEffect(() => {
         targetId: push.tweetId ?? null,
         read: false,
         createdAt: new Date().toISOString(),
-        actorName: push.actor ?? "Someone",
-        actorHandle: push.actor ?? "",
+        actorName: actor.displayName,
+        actorHandle: actor.handle,
         excerpt: push.tweetId ?? undefined,
       };
       return [incoming, ...prev];
