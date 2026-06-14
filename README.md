@@ -111,7 +111,24 @@ npm install                          # instala todos los workspaces
 npm run build -w packages/shared     # @xcloud/shared (lo consumen los servicios)
 ```
 
-Luego abrir una terminal por servicio (los servicios viven en `apps/services/`):
+#### Opción A — Script todo-en-uno (recomendado)
+
+Arranca los 8 microservicios **y** el SPA desde **una sola terminal**:
+
+```bash
+./start-dev.sh
+```
+
+Cada proceso corre en segundo plano; los logs van a `logs/<servicio>.log`.
+Para ver la salida de un servicio en tiempo real:
+
+```bash
+tail -f logs/tweet-service.log
+```
+
+Presiona `Ctrl+C` para detener todos los procesos a la vez.
+
+#### Opción B — Una terminal por servicio
 
 ```bash
 # Terminal 1 — Auth Service          (puerto 3000)
@@ -142,8 +159,10 @@ cd apps/services/search-service && npm run dev
 
 El SPA en `apps/web/` consume todos los servicios via un proxy de Vite (`/api/v1/<service>/*` → `http://localhost:<port>/v1/<service>/*`).
 
+> Si usaste `./start-dev.sh` (opción A), el SPA ya está corriendo en `:5173` — no hace falta este paso.
+
 ```bash
-cd apps/web && npm install && npm run dev
+cd apps/web && npm run dev
 ```
 
 Abrir [http://localhost:5173](http://localhost:5173). El proxy y la `VITE_API_BASE_URL=/api` están configurados en `apps/web/vite.config.ts` y `apps/web/.env`. Ver [apps/web/README.md](apps/web/README.md) para detalles.
@@ -178,6 +197,8 @@ Stop-Service postgresql-x64-17
 | DELETE | `/v1/users/:userId/follow` | Bearer | Dejar de seguir |
 
 > Nota: al registrarse via Auth Service se crea automáticamente la fila correspondiente en la tabla `users` (transacción atómica con `auth_users`), por lo que el perfil queda disponible inmediatamente sin necesidad de un `PUT /v1/users/me` previo.
+
+> Nota: salvo `/by-id/:userId`, estas rutas se sirven con los **handlers Smithy SSDK generados** desde el modelo (ver [SDK de servidor generado](#sdk-de-servidor-generado-xcloudsdk-server)) — el ruteo, la validación y la serialización salen del contrato.
 
 ### Tweet Service (puerto 3002)
 
@@ -276,7 +297,8 @@ Invoke-RestMethod -Method GET -Uri http://localhost:3004/v1/notifications -Heade
 
 ## Tests unitarios
 
-Cada servicio tiene tests con Jest y mocks. Ejecutar todos desde la raíz:
+Cada servicio tiene tests con Jest y mocks (también la infraestructura CDK,
+con assertions sobre los templates sintetizados). Ejecutar todos desde la raíz:
 
 ```bash
 npm test --workspaces --if-present
@@ -287,6 +309,14 @@ O uno individual:
 ```bash
 cd apps/services/feed-service && npm test
 ```
+
+Notas:
+- **fanout-service y feed-service usan `jest --forceExit`**: sus suites importan
+  (vía el automock de Jest) módulos que abren una conexión real a Redis al
+  cargarse, lo que dejaría el proceso colgado al terminar. No quitar el flag.
+- **auth-service** transpila `uuid` con ts-jest (`transformIgnorePatterns` +
+  `allowJs` en su bloque `jest`): `uuid@14` es ESM-only y Jest en CJS no puede
+  parsearlo de otra forma.
 
 ## Infraestructura Docker
 
@@ -309,7 +339,41 @@ smithy build
 
 El OpenAPI generado queda en `api-model/build/smithy/openapi/openapi/TwitterService.openapi.json`.
 
-Requiere el [Smithy CLI](https://smithy.io/2.0/guides/smithy-cli/cli_installation.html) (`brew install smithy-cli`). Las dependencias de plugins (openapi, aws-traits) se declaran en `api-model/smithy-build.json` (bloque `maven`) y el CLI las descarga solo — ya no se necesita Gradle ni un JDK aparte.
+Requiere el [Smithy CLI](https://smithy.io/2.0/guides/smithy-cli/cli_installation.html) (`brew install smithy-cli`). Las dependencias de plugins (openapi, aws-traits, codegen TS) se declaran en `api-model/smithy-build.json` (bloque `maven`) y el CLI las descarga solo — ya no se necesita Gradle ni un JDK aparte.
+
+### Cliente TypeScript generado (`@xcloud/sdk-client`)
+
+El SPA consume un **cliente tipado generado desde el modelo Smithy** para las
+operaciones modeladas (**tweets, users, feed** — incl. like/follow). Auth,
+notificaciones y búsqueda no están en el modelo y siguen escritas a mano.
+
+```bash
+# Requiere el Smithy CLI. Genera packages/sdk-client y packages/sdk-server
+# (src/ y dist/ de ambos están gitignored).
+npm run generate
+```
+
+`apps/web/src/api/{tweets,users,feed}.ts` usan los `*Command` generados via
+`apps/web/src/api/twitter-client.ts` (endpoint `<origin>/api` → proxy de Vite,
+JWT por el esquema `@httpBearerAuth`). Detalles y notas de versión en
+[docs/sdk-generation.md](docs/sdk-generation.md).
+
+### SDK de servidor generado (`@xcloud/sdk-server`)
+
+El mismo modelo también genera el **server SDK (SSDK)**, consumido por el
+backend (`npm run generate` genera ambos paquetes):
+
+- **user-service (piloto SSDK completo):** `GetUser`, `UpdateUser`,
+  `FollowUser` y `UnfollowUser` se sirven con los handlers generados — el
+  ruteo, la (de)serialización, la validación de constraints del modelo y los
+  códigos de error salen del contrato, no de código a mano (ver
+  `apps/services/user-service/src/smithy/`).
+- **tweet-service / feed-service (solo tipos):** los controllers tipan sus
+  requests contra los `*ServerInput` generados; si el modelo cambia, el build
+  falla.
+
+Así, frontend y backend comparten **un solo contrato** definido en
+`api-model/model/*.smithy`.
 
 ## Infraestructura AWS (CDK)
 
@@ -341,8 +405,8 @@ xcloud-api/
 │       └── fanout-service/       # worker + /health 3007
 ├── packages/
 │   ├── shared/                   # @xcloud/shared (auth, mensajería Kafka/SQS, utils)
-│   ├── sdk-client/               # SDK Smithy (skeleton, generación diferida)
-│   └── sdk-server/               # SDK Smithy (skeleton, generación diferida)
+│   ├── sdk-client/               # Cliente TS generado desde Smithy (usado por apps/web)
+│   └── sdk-server/               # Server SDK (SSDK) generado desde Smithy (usado por los services)
 ├── infrastructure/               # AWS CDK (ECS, RDS, ElastiCache, SQS/SNS, ...)
 ├── k8s/                          # manifiestos Kubernetes (solo referencia, ver ADR-002)
 └── docs/                         # ADRs, runbooks, baseline de migración

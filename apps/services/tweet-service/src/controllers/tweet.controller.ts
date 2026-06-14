@@ -1,11 +1,14 @@
 import { Request, Response } from "express";
 import { JwtPayload } from "jsonwebtoken";
+// Contrato generado desde el modelo Smithy (api-model) — solo tipos.
+// Si el modelo cambia (p.ej. renombra un campo del request), esto rompe en compile-time.
+import type { CreateTweetServerInput } from "@xcloud/sdk-server";
 import * as svc from "../services/tweet.service";
 
 type AuthRequest = Request & { user: JwtPayload & { sub: string } };
 
 export const createTweet = async (req: Request, res: Response): Promise<void> => {
-    const { content, mediaUrls, replyToTweetId } = req.body as { content?: string; mediaUrls?: string[]; replyToTweetId?: string };
+    const { content, mediaUrls, replyToTweetId } = req.body as CreateTweetServerInput;
 
     if (!content || content.trim().length === 0) { res.status(400).json({ message: "content is required" }); return; }
     if (content.length > 280) { res.status(400).json({ message: "content must be 280 characters or less" }); return; }

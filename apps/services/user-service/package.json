@@ -13,6 +13,9 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@aws-smithy/server-common": "1.0.0-alpha.10",
+    "@smithy/protocol-http": "^5.1.2",
+    "@xcloud/sdk-server": "*",
     "@xcloud/shared": "*",
     "aws-jwt-verify": "^5.1.1",
     "dotenv": "^17.4.2",

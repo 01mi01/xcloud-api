@@ -5,7 +5,7 @@ namespace com.twitter
 use com.twitter#UUID
 
 // ── Operaciones ───────────────────────────────────────
-@http(method: "POST", uri: "/v1/users/{userId}/follow")
+@http(method: "POST", uri: "/v1/users/{userId}/follow", code: 204)
 @auth([httpBearerAuth])
 operation FollowUser {
     input := {
@@ -23,7 +23,7 @@ operation FollowUser {
 }
 
 @idempotent
-@http(method: "DELETE", uri: "/v1/users/{userId}/follow")
+@http(method: "DELETE", uri: "/v1/users/{userId}/follow", code: 204)
 @auth([httpBearerAuth])
 operation UnfollowUser {
     input := {

@@ -57,7 +57,7 @@ function NotifIcon({ type }: { type: string }) {
 }
 
 // Human-readable label per notification type
-function notifText(type: string, actorName: string, excerpt?: string): string {
+function notifText(type: string, actorName: string, _excerpt?: string): string {
   if (type === "like") return `${actorName} liked your tweet`;
   if (type === "retweet") return `${actorName} retweeted your tweet`;
   if (type === "follow") return `${actorName} followed you`;
