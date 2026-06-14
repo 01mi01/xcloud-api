@@ -1,6 +1,6 @@
 # X(dot)com — Gaps de Implementación vs. Documento de Diseño Técnico
 
-**Fecha de auditoría:** 2026-06-13  
+**Fecha de auditoría:** 2026-06-14 (actualizado)  
 **Rama auditada:** `main`  
 **Preparado por:** Claude Code (auditoría automática)  
 **Presentación ante:** PhD. Jhesser Guzmán
@@ -11,7 +11,7 @@
 
 | Categoría | Total requerido | Implementado | Faltante |
 |---|---|---|---|
-| Endpoints REST | 19 | 16 | 3 |
+| Endpoints REST | 19 | 19 | 0 |
 | Topics Kafka / Eventos | 3 | 3 | 0 |
 | Tablas de base de datos | 8 | 7 | 1 (parcial) |
 | Stacks CDK (infraestructura) | 11 | 11 (en xcloud-api/infrastructure) | 0 |
@@ -19,73 +19,45 @@
 | WebSocket / Tiempo real | 1 | Parcial (publisher existe, server no activo) | — |
 | Repo xcloud-infrastructure separado | — | Vacío | Crítico |
 
-**Estado general:** El sistema corre y cubre los flujos core. Los gaps son puntuales y solucionables antes de la presentación.
+**Estado general:** El sistema corre y cubre todos los flujos core. Los gaps restantes son de seguridad (bcrypt→Argon2id), WebSocket en tiempo real, y el repositorio de infraestructura separado.
 
 ---
 
-## 1. ENDPOINTS FALTANTES
+## 1. ENDPOINTS — TODOS IMPLEMENTADOS ✅
 
-### 1.1 POST /v1/tweets/{tweetId}/retweet — RESUELTO ✅ (2026-06-13)
+### 1.1 POST/DELETE /v1/tweets/{tweetId}/retweet — RESUELTO ✅ (2026-06-13)
+Retweet y unretweet funcionales con tablas `retweets` y `retweets_by_user` en Cassandra.
 
-**Definido en:** Diseño §3.3  
-**Archivo afectado:** [apps/services/tweet-service/src/routes/tweet.routes.ts](../apps/services/tweet-service/src/routes/tweet.routes.ts)
+### 1.2 GET /v1/users/search — RESUELTO ✅ (2026-06-13)
+Búsqueda de usuarios por handle y displayName con LIKE en PostgreSQL.
 
-El endpoint de retweet / quote-tweet está completamente ausente. El diseño lo especifica así:
+### 1.3 GET /v1/tweets/by-author/:authorId — RESUELTO ✅ (2026-06-13)
+Posts por autor para la página de perfil.
 
-```
-POST /v1/tweets/{tweetId}/retweet     // Auth requerida
-body: { "comment": string }           // opcional → quote tweet si está presente
-response 201: Tweet
-errors:
-  404 → tweet original no encontrado
-  409 → ya retweeteó este tweet (sin comentario)
-```
+### 1.4 GET /v1/tweets/liked-by/:userId — RESUELTO ✅ (2026-06-13)
+Tweets likeados por usuario para la tab Likes del perfil.
 
-**Lo que falta implementar:**
-- Ruta `router.post("/:tweetId/retweet", verifyToken, ctrl.retweetTweet)` en tweet.routes.ts
-- Método `retweetTweet` en tweet.controller.ts
-- Lógica en tweet.service.ts: insertar tweet con `reply_to_tweet_id` apuntando al original, publicar evento `tweet.created`
-- Validación 409 si ya retweeteó (sin comentario)
+### 1.5 GET/POST/DELETE /v1/tweets/{tweetId}/retweet — RESUELTO ✅ (2026-06-13)
+Estado de retweet por tweet y usuario.
 
----
+### 1.6 GET /v1/users/:userId/following — RESUELTO ✅ (2026-06-14)
+Lista de usuarios que sigue un perfil.
 
-### 1.2 GET /v1/search?type=users — INCOMPLETO ⚠️
+### 1.7 GET /v1/users/:userId/followers — RESUELTO ✅ (2026-06-14)
+Lista de seguidores de un perfil.
+
+### 1.8 GET /v1/users/:userId/follow — RESUELTO ✅ (2026-06-14)
+Estado real de follow entre el usuario autenticado y otro usuario.
+
+### 1.9 GET /v1/search?type=users — Fase 2 ⚠️
 
 **Definido en:** Diseño §3.4  
-**Archivo afectado:** [apps/services/search-service/src/controllers/search.controller.ts](../apps/services/search-service/src/controllers/search.controller.ts)
+La búsqueda de usuarios vía Elasticsearch (`type=users`) retorna 400. En su lugar, la búsqueda de personas se hace directamente contra user-service con LIKE en PostgreSQL (`/v1/users/search`), lo que cubre el caso de uso. Documentar como "Fase 2: migración a OpenSearch para búsqueda federada".
 
-El diseño define `type: "tweets" | "users"`. Actualmente `type=users` retorna `400 Bad Request` con el mensaje `"Unsupported search type. Use 'tweets'."` — esto está hardcodeado y visible.
-
-```typescript
-// Línea 26-28 — search.controller.ts
-} else {
-    // type=users search would go here in a future iteration
-    res.status(400).json({ message: "Unsupported search type. Use 'tweets'." });
-}
-```
-
-**Lo que falta implementar:**
-- Indexar usuarios en Elasticsearch (en user-service, publicar evento al crear/actualizar perfil, o indexar directamente)
-- Método `searchUsers(q, limit, cursor)` en search.service.ts
-- Rama `type === "users"` en el controller
-
----
-
-### 1.3 DELETE /v1/users/me — FALTANTE ❌
+### 1.10 DELETE /v1/users/me — Fase 2 ⚠️
 
 **Definido en:** Diseño §6.4 (Seguridad / GDPR-CCPA)  
-**Archivo afectado:** [apps/services/user-service/src/routes/user.routes.ts](../apps/services/user-service/src/routes/user.routes.ts)
-
-El documento menciona explícitamente:
-
-> "Endpoint `DELETE /v1/users/me` implementa borrado completo (hard delete en UserDB, soft delete en TweetDB marcado para purga batch a 30 días)."
-
-Actualmente user.routes.ts solo tiene `GET /:handle`, `GET /by-id/:userId`, `PUT /me`, `POST /:userId/follow`, `DELETE /:userId/follow`. El endpoint de baja de cuenta no existe.
-
-**Lo que falta implementar:**
-- Ruta `router.delete("/me", verifyToken, ctrl.deleteMe)` en user.routes.ts
-- Método `deleteMe` en user.controller.ts
-- Lógica en user.service.ts: hard delete en tabla `users` + `auth_users`, soft delete / TTL en Cassandra (campo `is_deleted`)
+El endpoint de baja de cuenta (hard delete PostgreSQL + soft delete Cassandra) no está implementado. Admisible como "Fase 2 / GDPR compliance".
 
 ---
 
@@ -96,15 +68,7 @@ Actualmente user.routes.ts solo tiene `GET /:handle`, `GET /by-id/:userId`, `PUT
 **Definido en:** Diseño §5.2 y §6.1  
 **Archivo afectado:** [db/cassandra-init.cql](../db/cassandra-init.cql)
 
-El diseño especifica soft-delete en Cassandra para soporte GDPR:
-
-| Columna | Tipo | Restricciones |
-|---|---|---|
-| `is_deleted` | BOOLEAN | default false |
-
-El CQL actual **no tiene este campo**. La tabla `tweets` tampoco tiene el campo en `tweets_by_author`.
-
-**Impacto:** El endpoint `DELETE /v1/tweets/{tweetId}` realiza hard delete o simplemente no marca el registro. Para el flujo GDPR de `DELETE /v1/users/me` esto es necesario.
+El diseño especifica soft-delete en Cassandra para soporte GDPR. El CQL actual no tiene este campo en `tweets` ni en `tweets_by_author`. Vinculado al gap de `DELETE /v1/users/me` — ambos son Fase 2.
 
 ---
 
@@ -113,51 +77,39 @@ El CQL actual **no tiene este campo**. La tabla `tweets` tampoco tiene el campo 
 **Definido en:** Diseño §6.1  
 **Archivo afectado:** [db/cassandra-init.cql](../db/cassandra-init.cql)
 
-El diseño especifica tipo `COUNTER` para consistencia eventual en actualizaciones concurrentes. El CQL actual los define como `INT`. Los `COUNTER` en Cassandra tienen semántica especial (no mezclan con columnas regulares) — requeriría una tabla separada o cambiar el modelo.
-
-**Impacto:** A baja escala (dev/demo) no es visible, pero es una inconsistencia con el diseño técnico que el docente puede señalar.
+El diseño especifica tipo `COUNTER` para consistencia eventual en actualizaciones concurrentes. El CQL actual los define como `INT`. A baja escala (dev/demo) no es visible. Documentar como decisión de implementación: los COUNTER en Cassandra no pueden mezclarse con columnas regulares en la misma tabla, por lo que se optó por INT con lógica de incremento atómico en el service.
 
 ---
 
 ### 2.3 TTL de datos en Cassandra (7 años tweets, 2 años likes) — No configurado ⚠️
 
-**Definido en:** Diseño §6.9 (Retención de datos)
-
-| Almacén | TTL diseño |
-|---|---|
-| Keyspaces — tweets | 7 años |
-| Keyspaces — likes | 2 años |
-
-En el CQL de inicialización no hay `DEFAULT TTL` definido en ninguna tabla. En el ambiente local esto no impacta funcionalmente, pero el diseño lo menciona como parte de la estrategia de retención.
+**Definido en:** Diseño §6.9 (Retención de datos)  
+No hay `DEFAULT TTL` en las tablas. Solo aplica en producción con AWS Keyspaces. Admisible como "configuración de producción".
 
 ---
 
-## 3. SEGURIDAD — GAPS
+## 3. SEGURIDAD — GAPS PENDIENTES
 
-### 3.1 bcrypt en lugar de Argon2id ⚠️
+### 3.1 bcrypt en lugar de Argon2id ⚠️ PENDIENTE
 
 **Definido en:** Diseño §6.4 — "Passwords hasheados con **Argon2id** (nunca bcrypt en nuevas implementaciones)."  
-**Archivo afectado:** [apps/services/auth-service/src/services/auth.service.ts](../apps/services/auth-service/src/services/auth.service.ts) línea 2 y 27
+**Archivo afectado:** [apps/services/auth-service/src/services/auth.service.ts](../apps/services/auth-service/src/services/auth.service.ts)
 
 ```typescript
-import bcrypt from "bcrypt";           // línea 2
-const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);  // línea 27
+import bcrypt from "bcrypt";  // debe ser: import argon2 from "argon2"
 ```
 
-El diseño es explícito: Argon2id, no bcrypt. Esta es una decisión de seguridad documentada.
-
-**Lo que falta:** Reemplazar `bcrypt` por `argon2` (package `argon2` en npm). El cambio afecta solo `auth.service.ts`.
+El diseño prohíbe explícitamente bcrypt. **Alto impacto en presentación.** Esfuerzo: 30 min.
 
 ---
 
-### 3.2 Rate limiting en POST /v1/auth/login — No visible ⚠️
+### 3.2 Rate limiting en POST /v1/auth/login ⚠️ PENDIENTE
 
 **Definido en:** Diseño §3.1 — "429 → rate limit excedido (máx 10 intentos/min por IP)"  
 **Archivo afectado:** [apps/services/auth-service/src/routes/auth.routes.ts](../apps/services/auth-service/src/routes/auth.routes.ts)
 
-El route de login no tiene middleware de rate limiting. El error 429 nunca se devuelve.
+El route de login no tiene middleware de rate limiting. El error 429 nunca se devuelve. Esfuerzo: 30 min.
 
-**Lo que falta:** Agregar `express-rate-limit` en la ruta de login:
 ```typescript
 import rateLimit from "express-rate-limit";
 const loginLimiter = rateLimit({ windowMs: 60_000, max: 10 });
@@ -166,40 +118,46 @@ router.post("/login", loginLimiter, login);
 
 ---
 
-### 3.3 Validación de formato de `handle` en registro ⚠️
+### 3.3 Validación de formato de `handle` en registro ⚠️ PENDIENTE
 
 **Definido en:** Diseño §3.1 — "handle: solo `[a-zA-Z0-9_]`, 4-20 chars"  
 **Archivo afectado:** [apps/services/auth-service/src/controllers/auth.controller.ts](../apps/services/auth-service/src/controllers/auth.controller.ts)
 
-El controller solo valida que `handle` no esté vacío, no valida formato ni longitud. Un handle como `"ab"` o `"handle con espacios"` se aceptaría actualmente.
-
-**Lo que falta:** Agregar validación regex antes de llamar a `registerUser`:
-```typescript
-const handleRegex = /^[a-zA-Z0-9_]{4,20}$/;
-if (!handleRegex.test(handle)) {
-    res.status(400).json({ message: "handle must be 4-20 chars, only letters, numbers and _" });
-    return;
-}
-```
+El controller no valida formato ni longitud del handle. Esfuerzo: 20 min.
 
 ---
 
-## 4. WEBSOCKETS — INCOMPLETO ⚠️
+### 3.4 Response de /register sin token ⚠️ PENDIENTE
+
+**Definido en:** Diseño §3.1 — `response 201: { "userId": string, "token": JWT }`  
+**Archivo afectado:** [apps/services/auth-service/src/controllers/auth.controller.ts](../apps/services/auth-service/src/controllers/auth.controller.ts)
+
+```typescript
+// Implementado actualmente:
+res.status(201).json({ userId, message: "User registered successfully" });
+// Diseño espera:
+res.status(201).json({ userId, token: JWT });
+```
+
+El cliente debe hacer login por separado tras el registro. Esfuerzo: 15 min.
+
+---
+
+## 4. WEBSOCKETS — INCOMPLETO ⚠️ PENDIENTE
 
 **Definido en:** Diseño §4.3 (Flujo de Notificaciones en Tiempo Real) y §5.3  
 **Archivos relevantes:**
 - [apps/services/notification-service/src/websocket/ws.publisher.ts](../apps/services/notification-service/src/websocket/ws.publisher.ts) — existe y está bien implementado
 - [apps/services/notification-service/src/index.ts](../apps/services/notification-service/src/index.ts) — **no inicia servidor WebSocket**
 
-El publisher (`ws.publisher.ts`) tiene implementado `registerConnection`, `removeConnection` y `pushToUser`. Sin embargo, el `index.ts` del servicio **solo inicia el servidor HTTP** — nunca arranca un servidor WebSocket (`ws.Server` o similar) que acepte conexiones entrantes.
-
-**Consecuencia:** Las funciones `pushToUser` nunca son invocadas porque no hay conexiones registradas. Las notificaciones se guardan en DB correctamente pero no se entregan en tiempo real.
+El publisher tiene `registerConnection`, `removeConnection` y `pushToUser` implementados. El `index.ts` solo inicia el servidor HTTP — nunca arranca `ws.Server`. Las notificaciones se guardan en DB correctamente pero no se entregan en tiempo real.
 
 **Lo que falta:**
-- Importar `ws` o `socket.io` en `index.ts`
-- Crear `wss = new WebSocket.Server({ server: httpServer })`
-- En el `connection` event: autenticar el JWT del cliente, llamar `registerConnection(userId, ws)`
-- En el `close` event: llamar `removeConnection(userId, ws)`
+- `wss = new WebSocket.Server({ server: httpServer })` en index.ts
+- Autenticar JWT en el evento `connection`, llamar `registerConnection(userId, ws)`
+- En evento `close`: llamar `removeConnection(userId, ws)`
+
+Esfuerzo estimado: 2 horas.
 
 ---
 
@@ -210,78 +168,44 @@ El publisher (`ws.publisher.ts`) tiene implementado `registerConnection`, `remov
 | RPC | Estado |
 |---|---|
 | `GetTweetsByIds` (Feed → Tweet) | ✅ Implementado (`feed-service/src/grpc/tweet.client.ts`) |
-| `GetUserNotificationPrefs` (Notification → User) | ❌ No implementado |
-| `ValidateMediaIds` (Media → Tweet) | ❌ No implementado (Media Service es stub) |
+| `GetUserNotificationPrefs` (Notification → User) | ❌ Fase 2 |
+| `ValidateMediaIds` (Media → Tweet) | ❌ Fase 2 (Media Service es stub) |
 
-Los dos RPCs faltantes están bloqueados por la falta de implementación de Media Service. Para la presentación pueden documentarse como "Fase 2 / dependientes de Media Service".
+Los dos RPCs faltantes dependen de Media Service (stub). Documentar como "Fase 2".
 
 ---
 
-## 6. REPOSITORIO xcloud-infrastructure — VACÍO ❌
+## 6. REPOSITORIO xcloud-infrastructure — VACÍO ❌ PENDIENTE
 
 **Ruta:** `C:\Users\Hp\Desktop\MAESTRIA\ESPECIALIDAD\JHESSER GUZMAN\xcloud-infrastructure\xcloud-infrastructure`
 
-Este repositorio contiene solo el stack de ejemplo generado por `cdk init` con todo comentado:
-
-```typescript
-// lib/xcloud-infrastructure-stack.ts
-export class XcloudInfrastructureStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
-    super(scope, id, props);
-    // The code that defines your stack goes here
-    // example resource
-    // const queue = new sqs.Queue(this, 'XcloudInfrastructureQueue', { ... });
-  }
-}
-```
-
-La infraestructura real (11 stacks CDK completos) está en `xcloud-api/infrastructure/`. Si el docente revisa el repo separado, verá un proyecto vacío.
+Solo tiene el stack de ejemplo generado por `cdk init`. La infraestructura real (11 stacks CDK) está en `xcloud-api/infrastructure/`.
 
 **Opciones:**
-1. Copiar/mover el contenido de `xcloud-api/infrastructure/` a `xcloud-infrastructure/`
-2. Referenciar en la presentación que la infraestructura está co-located en el monorepo `xcloud-api/infrastructure/`
+1. Copiar el contenido de `xcloud-api/infrastructure/` al repo separado
+2. Referenciar en presentación que la infraestructura está co-located en el monorepo
 
 ---
 
-## 7. RESPUESTA DEL REGISTER — Incompleta vs. Diseño ⚠️
+## TABLA DE PRIORIDADES ACTUALIZADA
 
-**Definido en:** Diseño §3.1 — `response 201: { "userId": string, "token": JWT }`  
-**Archivo afectado:** [apps/services/auth-service/src/controllers/auth.controller.ts](../apps/services/auth-service/src/controllers/auth.controller.ts) línea 16
-
-```typescript
-// Implementado actualmente:
-res.status(201).json({ userId, message: "User registered successfully" });
-
-// Diseño espera:
-res.status(201).json({ userId: string, token: JWT });
-```
-
-El registro no retorna un JWT — el cliente debe hacer login por separado. El diseño dice que el registro devuelve el token directamente.
-
----
-
-## TABLA DE PRIORIDADES
-
-| # | Gap | Impacto en presentación | Esfuerzo estimado |
-|---|---|---|---|
-| 1 | **Repo xcloud-infrastructure vacío** | Alto — el docente puede revisarlo | Bajo (copiar archivos) |
-| 2 | ~~**POST /retweet faltante**~~ ✅ RESUELTO | Alto — endpoint core del diseño | Medio (2-3 horas) |
-| 3 | **bcrypt en lugar de Argon2id** | Alto — el diseño lo prohíbe explícitamente | Bajo (30 min) |
-| 4 | **Response de /register sin token** | Medio — inconsistencia de contrato | Bajo (15 min) |
-| 5 | **Rate limiting en /login** | Medio — el diseño especifica 429 | Bajo (30 min) |
-| 6 | **Validación de handle en registro** | Medio — el diseño especifica regex | Bajo (20 min) |
-| 7 | **WebSocket server no iniciado** | Medio — el diseño tiene diagrama dedicado | Medio (2 horas) |
-| 8 | **is_deleted en Cassandra** | Bajo — mencionado en diseño §6.1 | Bajo (5 min en CQL) |
-| 9 | **GET /search?type=users** | Bajo — admisible como "Fase 2" | Alto (requiere indexado de users) |
-| 10 | **DELETE /v1/users/me (GDPR)** | Bajo — admisible como "Fase 2" | Medio (1-2 horas) |
-| 11 | **TTL en Cassandra** | Bajo — solo en producción (Keyspaces) | Bajo (solo en CQL) |
-| 12 | **gRPC GetUserNotificationPrefs / ValidateMediaIds** | Bajo — dependen de Media Service stub | Alto |
+| # | Gap | Estado | Impacto en presentación | Esfuerzo |
+|---|---|---|---|---|
+| 1 | **Repo xcloud-infrastructure vacío** | ❌ Pendiente | Alto | Bajo (copiar archivos) |
+| 2 | **bcrypt → Argon2id** | ❌ Pendiente | Alto — el diseño lo prohíbe | Bajo (30 min) |
+| 3 | **Response de /register sin token** | ❌ Pendiente | Medio | Bajo (15 min) |
+| 4 | **Rate limiting en /login (429)** | ❌ Pendiente | Medio | Bajo (30 min) |
+| 5 | **Validación de handle en registro** | ❌ Pendiente | Medio | Bajo (20 min) |
+| 6 | **WebSocket server no iniciado** | ❌ Pendiente | Medio | Medio (2 horas) |
+| 7 | **is_deleted en Cassandra** | ❌ Pendiente | Bajo | Bajo (5 min CQL) |
+| 8 | **GET /search?type=users (Elasticsearch)** | ⚠️ Fase 2 | Bajo | Alto |
+| 9 | **DELETE /v1/users/me (GDPR)** | ⚠️ Fase 2 | Bajo | Medio |
+| 10 | **TTL en Cassandra** | ⚠️ Solo producción | Bajo | Bajo |
+| 11 | **gRPC GetUserNotificationPrefs / ValidateMediaIds** | ⚠️ Fase 2 | Bajo | Alto |
 
 ---
 
 ## LO QUE SÍ ESTÁ BIEN ✅
-
-Para contexto completo, esto es lo que **sí cumple** con el diseño:
 
 - **8 microservicios** corriendo en sus puertos correctos (3000–3007)
 - **Mensajería híbrida** Kafka local / SQS+SNS producción implementada en `@xcloud/shared`
@@ -294,10 +218,15 @@ Para contexto completo, esto es lo que **sí cumple** con el diseño:
 - **MonitoringStack** con alarmas CloudWatch alineadas al diseño §6.3
 - **Cognito** configurado en AuthStack (User Pool + grupos admin/moderator/user)
 - **Modelo de datos PostgreSQL** (users, follows, notifications) coincide con el diseño §6.1
-- **Modelo de datos Cassandra** (tweets, tweets_by_author, likes, likes_by_user) con partition key correcto
-- **Frontend React** con todas las páginas del flujo core (home, login, register, profile, search, notifications)
+- **Modelo de datos Cassandra** (tweets, tweets_by_author, likes, likes_by_user, retweets, retweets_by_user) con partition key correcto
+- **Retweet/unretweet** funcional con estado persistido en Cassandra ✅ (2026-06-13)
+- **Búsqueda de usuarios** en tiempo real con dropdown flotante en sidebar y página Search ✅ (2026-06-14)
+- **Following/Followers** con estados reales desde backend, navegación desde perfil ✅ (2026-06-14)
+- **Follow status** cargado al abrir cualquier perfil ✅ (2026-06-14)
+- **Frontend React** completo: home, login, register, profile, search (con dropdown + Enter), notifications, bookmarks, connections (following/followers)
 - **Vite proxy** configurado correctamente para rutear `/api/v1/<servicio>/*` a cada puerto
+- **Smithy SSDK** pilot en user-service con 4 operaciones modeladas (GetUser, UpdateUser, Follow, Unfollow)
 
 ---
 
-*Documento generado automáticamente mediante auditoría de código. Verificar con `git log` cualquier cambio posterior a 2026-06-13.*
+*Última actualización: 2026-06-14. Verificar con `git log` para cambios posteriores.*

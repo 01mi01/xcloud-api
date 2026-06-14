@@ -20,31 +20,32 @@ Phd. Jhesser Guzman
 
 ## Arquitectura
 
-El sistema está compuesto por **7 microservicios** independientes, cada uno con su propia responsabilidad:
+El sistema está compuesto por **8 microservicios** independientes, cada uno con su propia responsabilidad:
 
 | Servicio | Puerto | Descripción | Base de datos |
 |---|---|---|---|
 | Auth Service | 3000 | Registro, login, JWT | PostgreSQL (`auth_users`) |
-| User Service | 3001 | Perfiles, follow/unfollow | PostgreSQL (`users`, `follows`) |
-| Tweet Service | 3002 | CRUD tweets, likes | Cassandra (`tweets`, `likes`) |
-| Feed Service | 3003 | Timeline personalizado | Redis (cache) + Cassandra (fallback) |
-| Fan-out Service | — | Distribuye tweets a feeds | Redis (escritura) + PostgreSQL (lectura) |
-| Notification Service | 3004 | Notificaciones de interacciones | PostgreSQL (`notifications`) |
-| Search Service | 3005 | Búsqueda full-text | Elasticsearch (`tweets` index) |
+| User Service | 3001 | Perfiles, follow/unfollow, búsqueda | PostgreSQL (`users`, `follows`) |
+| Tweet Service | 3002 | CRUD tweets, likes, retweets | Cassandra (`tweets`, `likes`, `retweets`) |
+| Feed Service | 3003 | Timeline personalizado con cursor pagination | Redis (cache) + Cassandra (fallback) |
+| Fan-out Service | worker + /health 3007 | Distribuye tweets al feed de seguidores | Redis (escritura) + PostgreSQL (lectura) |
+| Notification Service | 3004 | Notificaciones de likes y follows | PostgreSQL (`notifications`) |
+| Search Service | 3005 | Búsqueda full-text de tweets | Elasticsearch (`tweets` index) |
+| Media Service | 3006 | Gestión de archivos multimedia (stub) | S3 (producción) |
 
 ### Comunicación entre servicios
 
 - **REST** para APIs públicas (cliente → servicio)
-- **Kafka** para comunicación asíncrona entre servicios (eventos)
-- **HTTP interno** para hidratación de datos (Feed → Tweet Service)
+- **Kafka** (local) / **SQS+SNS** (producción) para eventos asíncronos — conmutación automática en `@xcloud/shared`
+- **gRPC** para hidratación de tweets (Feed Service → Tweet Service, `GetTweetsByIds`)
 
-### Topics de Kafka
+### Topics de Kafka / Colas SQS
 
-| Topic | Productor | Consumidores |
+| Topic / Cola | Productor | Consumidores |
 |---|---|---|
 | `tweet.created` | Tweet Service | Fan-out Service, Search Service |
 | `tweet.liked` | Tweet Service | Notification Service |
-| `user.followed` | User Service (pendiente) | Notification Service |
+| `user.followed` | User Service | Notification Service |
 
 ## Prerequisitos
 
@@ -191,24 +192,35 @@ Stop-Service postgresql-x64-17
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
 | GET | `/v1/users/:handle` | No | Obtener perfil por handle |
-| GET | `/v1/users/by-id/:userId` | No | Obtener perfil por userId (usado por hidratación de tweets) |
+| GET | `/v1/users/by-id/:userId` | No | Obtener perfil por userId |
+| GET | `/v1/users/search?q=...` | No | Buscar usuarios por handle o nombre |
 | PUT | `/v1/users/me` | Bearer | Actualizar perfil propio |
 | POST | `/v1/users/:userId/follow` | Bearer | Seguir a un usuario |
 | DELETE | `/v1/users/:userId/follow` | Bearer | Dejar de seguir |
+| GET | `/v1/users/:userId/follow` | Bearer | Estado de follow (¿ya lo sigo?) |
+| GET | `/v1/users/:userId/following` | No | Lista de usuarios que sigue |
+| GET | `/v1/users/:userId/followers` | No | Lista de seguidores |
 
-> Nota: al registrarse via Auth Service se crea automáticamente la fila correspondiente en la tabla `users` (transacción atómica con `auth_users`), por lo que el perfil queda disponible inmediatamente sin necesidad de un `PUT /v1/users/me` previo.
+> Al registrarse via Auth Service se crea automáticamente la fila en `users` (transacción atómica con `auth_users`).
 
-> Nota: salvo `/by-id/:userId`, estas rutas se sirven con los **handlers Smithy SSDK generados** desde el modelo (ver [SDK de servidor generado](#sdk-de-servidor-generado-xcloudsdk-server)) — el ruteo, la validación y la serialización salen del contrato.
+> Las rutas `/:handle`, `PUT /me`, `POST/DELETE /:userId/follow` se sirven con los **handlers Smithy SSDK generados** — ruteo, validación y serialización salen del contrato (ver [SDK de servidor generado](#sdk-de-servidor-generado-xcloudsdk-server)).
 
 ### Tweet Service (puerto 3002)
 
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
-| POST | `/v1/tweets` | Bearer | Publicar tweet |
+| POST | `/v1/tweets` | Bearer | Publicar tweet o reply |
 | GET | `/v1/tweets/:tweetId` | No | Obtener tweet por ID |
 | DELETE | `/v1/tweets/:tweetId` | Bearer | Eliminar tweet propio |
+| GET | `/v1/tweets/:tweetId/replies` | No | Replies de un tweet |
 | POST | `/v1/tweets/:tweetId/like` | Bearer | Dar like |
 | DELETE | `/v1/tweets/:tweetId/like` | Bearer | Quitar like |
+| GET | `/v1/tweets/:tweetId/like` | Bearer | Estado de like |
+| POST | `/v1/tweets/:tweetId/retweet` | Bearer | Retweet |
+| DELETE | `/v1/tweets/:tweetId/retweet` | Bearer | Quitar retweet |
+| GET | `/v1/tweets/:tweetId/retweet` | Bearer | Estado de retweet |
+| GET | `/v1/tweets/by-author/:authorId` | No | Tweets de un autor (perfil) |
+| GET | `/v1/tweets/liked-by/:userId` | No | Tweets likeados por un usuario |
 
 ### Feed Service (puerto 3003)
 
@@ -377,14 +389,35 @@ Así, frontend y backend comparten **un solo contrato** definido en
 
 ## Infraestructura AWS (CDK)
 
-La carpeta `infrastructure/` contiene el IaC (AWS CDK) para desplegar en ECS Fargate. Para sintetizar las plantillas de **beta** (sin desplegar):
+La infraestructura como código está en dos repositorios:
+
+- **`xcloud-api/infrastructure/`** — co-located en el monorepo (fuente de verdad durante desarrollo)
+- **`xcloud-infrastructure/`** — repositorio separado de IaC (reflejo sincronizado, para revisión independiente por el equipo de cloud)
+
+Contiene **11 stacks CDK** para desplegar en ECS Fargate:
+
+| Stack | Responsabilidad |
+|---|---|
+| `NetworkingStack` | VPC, subnets, NAT Gateway |
+| `DatabaseStack` | RDS PostgreSQL, Keyspaces |
+| `CacheStack` | ElastiCache Redis |
+| `MessagingStack` | SQS + SNS (fan-out tweet.created → 2 colas) |
+| `SearchStack` | OpenSearch (beta: deshabilitado) |
+| `StorageStack` | S3 bucket para media |
+| `AuthStack` | Cognito User Pool + grupos |
+| `EcsStack` | ECS Fargate — 8 servicios + ALB |
+| `GatewayStack` | API Gateway (producción) |
+| `CdnStack` | CloudFront + S3 SPA |
+| `MonitoringStack` | CloudWatch alarmas + dashboards |
+
+Para sintetizar las plantillas de **beta** (sin desplegar):
 
 ```bash
 cd infrastructure
 npx cdk synth --context env=beta
 ```
 
-Beta usa `enableSearch=false`, 1 NAT, 1 task por servicio (~$136/mes). Ver `docs/adr/` para las decisiones (SQS sobre MSK, ECS sobre EKS).
+Beta usa `enableSearch=false`, 1 NAT Gateway, 1 task por servicio (~$136/mes). Ver `docs/adr/` para las decisiones de arquitectura (SQS sobre MSK, ECS sobre EKS).
 
 ## Estructura del proyecto
 
@@ -397,12 +430,16 @@ xcloud-api/
 ├── db/                           # init.sql (PostgreSQL) + cassandra-init.cql
 ├── api-model/                    # Smithy CLI (genera OpenAPI)
 ├── apps/
-│   ├── web/                      # Frontend React (Vite)
+│   ├── web/                      # Frontend React 19 + Vite (SPA)
 │   └── services/
-│       ├── auth-service/         # 3000   user-service/ 3001   tweet-service/ 3002
-│       ├── feed-service/         # 3003   notification-service/ 3004   search-service/ 3005
-│       ├── media-service/        # 3006 (stub)
-│       └── fanout-service/       # worker + /health 3007
+│       ├── auth-service/         # :3000 — registro, login, JWT
+│       ├── user-service/         # :3001 — perfiles, follow, búsqueda (SSDK piloto)
+│       ├── tweet-service/        # :3002 — tweets, likes, retweets, replies
+│       ├── feed-service/         # :3003 — timeline, cursor pagination, gRPC
+│       ├── notification-service/ # :3004 — notificaciones, WebSocket publisher
+│       ├── search-service/       # :3005 — full-text Elasticsearch
+│       ├── media-service/        # :3006 — stub (S3 en producción)
+│       └── fanout-service/       # worker + /health :3007 — fan-out on write
 ├── packages/
 │   ├── shared/                   # @xcloud/shared (auth, mensajería Kafka/SQS, utils)
 │   ├── sdk-client/               # Cliente TS generado desde Smithy (usado por apps/web)

@@ -4,7 +4,9 @@
       "Bash(git clone *)",
       "PowerShell(Invoke-RestMethod -Method POST -Uri \"http://localhost:3000/v1/auth/register\" -ContentType \"application/json\" -Body '{\"handle\":\"testuser\",\"email\":\"test@xcloud.com\",\"password\":\"Test1234!\"}')",
       "PowerShell(Get-Content \"$env:TEMP\\\\tweet-service.log\")",
-      "PowerShell(docker exec xcloud-cassandra cqlsh -e \"DESCRIBE KEYSPACES\" 2>&1)"
+      "PowerShell(docker exec xcloud-cassandra cqlsh -e \"DESCRIBE KEYSPACES\" 2>&1)",
+      "Bash(ls \"c:/Users/Hp/Desktop/MAESTRIA/ESPECIALIDAD/JHESSER GUZMAN/xcloud-infrastructure/xcloud-infrastructure/lib/stacks/\")",
+      "Read(//c/Users/Hp/Desktop/MAESTRIA/ESPECIALIDAD/JHESSER GUZMAN/xcloud-infrastructure/xcloud-infrastructure/lib/stacks/**)"
     ]
   }
 }
