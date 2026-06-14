@@ -53,6 +53,15 @@ export const update = async (userId: string, fields: UpdateFields): Promise<User
     return findById(userId);
 };
 
+export const search = async (query: string): Promise<User[]> => {
+    const q = `%${query.toLowerCase()}%`;
+    const { rows } = await pool.query(
+        `${WITH_COUNTS} WHERE LOWER(u.handle) LIKE $1 OR LOWER(u.display_name) LIKE $1 ORDER BY u.display_name LIMIT 20`,
+        [q]
+    );
+    return rows.map(fromRow);
+};
+
 export const insertFollow = async (followerId: string, followingId: string): Promise<void> => {
     await pool.query(
         `INSERT INTO follows (follower_id, following_id) VALUES ($1, $2)`,

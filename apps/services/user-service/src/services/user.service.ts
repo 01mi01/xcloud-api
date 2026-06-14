@@ -31,6 +31,10 @@ export const updateProfile = async (userId: string, handle: string, fields: Upda
     return user;
 };
 
+export const search = async (query: string): Promise<User[]> => {
+    return repo.search(query);
+};
+
 export const follow = async (followerId: string, followingId: string): Promise<void> => {
     const target = await repo.findById(followingId);
     if (!target) throw new UserNotFoundError("Target user not found");

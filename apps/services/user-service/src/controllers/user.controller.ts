@@ -4,6 +4,17 @@ import * as svc from "../services/user.service";
 // Las operaciones modeladas en Smithy (GetUser, UpdateUser, Follow/Unfollow)
 // viven en src/smithy/operations.ts — aquí solo quedan las rutas fuera del modelo.
 
+export const searchUsers = async (req: Request, res: Response): Promise<void> => {
+    const q = (req.query.q as string ?? "").trim();
+    if (q.length < 1) { res.status(200).json({ users: [] }); return; }
+    try {
+        const users = await svc.search(q);
+        res.status(200).json({ users });
+    } catch {
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
 export const getUserById = async (req: Request, res: Response): Promise<void> => {
     try {
         const user = await svc.getById(req.params.userId as string);

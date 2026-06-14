@@ -7,6 +7,7 @@ const router = Router();
 
 // Especificas antes que parametrizadas para evitar shadowing
 // /by-id no está en el modelo Smithy — sigue siendo un handler Express plano.
+router.get("/search", ctrl.searchUsers);
 router.get("/by-id/:userId", ctrl.getUserById);
 
 // Operaciones modeladas — servidas por los handlers Smithy SSDK generados
