@@ -28,6 +28,13 @@ export interface ReplyEvent {
     timestamp:     string;
 }
 
+export interface MentionEvent {
+    tweetId:      string;   // el tweet donde ocurrió la mención
+    userId:       string;   // quien mencionó (actor)
+    targetUserId: string;   // el usuario mencionado (destinatario)
+    timestamp:    string;
+}
+
 /**
  * Procesa un evento de like.
  * Diseño técnico §4.3:
@@ -89,6 +96,22 @@ export const processReplyEvent = async (event: ReplyEvent): Promise<void> => {
         event.userId,          // quien respondió es el actor
         "reply",
         event.parentTweetId    // el tweet al que respondieron
+    );
+
+    wsPublisher.pushToUser(event.targetUserId, notification);
+};
+
+/**
+ * Procesa un evento de mención (@handle en un tweet).
+ */
+export const processMentionEvent = async (event: MentionEvent): Promise<void> => {
+    if (event.userId === event.targetUserId) return; // no notificar auto-mención
+
+    const notification = await repo.insert(
+        event.targetUserId,  // el mencionado recibe la notificación
+        event.userId,        // quien lo mencionó es el actor
+        "mention",
+        event.tweetId
     );
 
     wsPublisher.pushToUser(event.targetUserId, notification);
