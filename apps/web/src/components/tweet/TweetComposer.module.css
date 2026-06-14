@@ -120,17 +120,19 @@
 }
 
 .toolBtn {
-  color: var(--color-accent);
+  color: var(--color-text-secondary);
   padding: 6px;
   border-radius: var(--radius-full);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, color 0.2s, transform 0.15s;
 }
 
 .toolBtn:hover {
+  color: var(--color-accent);
   background-color: rgba(29, 155, 240, 0.1);
+  transform: scale(1.15);
 }
 
 .right2 {
