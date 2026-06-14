@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import type { User, Tweet, RawTweet } from "../types";
 import { apiFetch } from "../api/client";
 import { hydrateTweets } from "../api/hydrate";
@@ -22,18 +22,21 @@ const TRENDING = [
 
 function Search() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { identity } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [query, setQuery] = useState("");
+  const initialQ = searchParams.get("q") ?? "";
+  const [query, setQuery] = useState(initialQ);
   const [tweetResults, setTweetResults] = useState<Tweet[]>([]);
   const [userResults, setUserResults] = useState<User[]>([]);
   const [searching, setSearching] = useState(false);
   const [focused, setFocused] = useState(false);
-  // submitted = true cuando se presiona Enter → muestra vista de resultados completa
-  const [submitted, setSubmitted] = useState(false);
+  const [submitted, setSubmitted] = useState(initialQ.length > 0);
   const [activeTab, setActiveTab] = useState<Tab>("tweets");
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => {
+    if (!initialQ) inputRef.current?.focus();
+  }, []);
 
   const handleCancel = () => {
     setQuery("");
@@ -155,8 +158,8 @@ function Search() {
                 <p className={styles.dropdownHint}>Buscando…</p>
               )}
 
-              {hasQuery && !searching && userResults.length === 0 && tweetResults.length === 0 && (
-                <p className={styles.dropdownHint}>Sin resultados para "{query}".</p>
+              {hasQuery && !searching && userResults.length === 0 && (
+                <p className={styles.dropdownHint}>Sin personas para "{query}".</p>
               )}
 
               {hasQuery && !searching && userResults.length > 0 && (
@@ -178,24 +181,6 @@ function Search() {
                 </div>
               )}
 
-              {hasQuery && !searching && tweetResults.length > 0 && (
-                <div className={styles.dropdownSection}>
-                  <p className={styles.dropdownSectionTitle}>Posts</p>
-                  {tweetResults.slice(0, 3).map((tweet) => (
-                    <div
-                      key={tweet.tweetId}
-                      className={styles.dropdownTweetRow}
-                      onMouseDown={() => { setFocused(false); navigate(`/tweet/${tweet.tweetId}`); }}
-                    >
-                      <Avatar size={28} />
-                      <div className={styles.dropdownTweetInfo}>
-                        <span className={styles.dropdownTweetAuthor}>{tweet.author.displayName} <span style={{ fontWeight: 400 }}>@{tweet.author.handle}</span></span>
-                        <p className={styles.dropdownTweetText}>{tweet.content}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           )}
         </div>
