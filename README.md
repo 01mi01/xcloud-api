@@ -386,6 +386,42 @@ npx cdk synth --context env=beta
 
 Beta usa `enableSearch=false`, 1 NAT, 1 task por servicio (~$136/mes). Ver `docs/adr/` para las decisiones (SQS sobre MSK, ECS sobre EKS).
 
+### Deploy y teardown de beta (scripts)
+
+Para levantar y bajar el entorno beta con una sola orden cada uno (desde la raíz).
+**Se pasa el perfil AWS como argumento** (obligatorio) — así eliges la cuenta
+correcta y no hay forma de desplegar en la equivocada:
+
+```bash
+./deploy-beta.sh personal     # bootstrap (si falta) + cdk deploy --all (env=beta)
+./status-beta.sh personal     # READ-ONLY: ¿queda algo corriendo? ¿me están cobrando?
+./destroy-beta.sh personal    # cdk destroy --all (env=beta) — borra TODO
+```
+
+`status-beta.sh` no cambia nada: lista los stacks beta y cuenta los recursos
+"always-on" facturables (NAT Gateway, tasks Fargate, RDS, ALB, ElastiCache) y
+dice `✅ CLEAN` o `⚠️ RESOURCES LIVE`. Úsalo después de `destroy-beta.sh` para
+confirmar que no quedó nada drenando créditos.
+
+Configura un perfil con nombre por cuenta una sola vez (evita usar `default`
+para cuentas importantes):
+
+```bash
+aws configure --profile personal     # cuenta con créditos
+aws configure --profile work
+aws configure --profile colleagues
+```
+
+Ambos scripts **imprimen el perfil + cuenta + región AWS y piden confirmación
+(`yes`) antes de tocar nada**. Requieren AWS CLI configurado y Docker corriendo
+(CDK construye las imágenes de los servicios).
+
+> ⚠️ **Costo:** beta corre recursos NO incluidos en el free tier (NAT Gateway +
+> Fargate + ALB, ~$0.10/hora). Esos cargos consumen tus **créditos AWS** (no
+> salen de tu bolsillo si tienes los ~$200 de crédito, pero sí los gastan, ~$11–15
+> por 3 días). RDS y ElastiCache t3.micro sí entran en el free tier de 12 meses.
+> **Ejecuta `./destroy-beta.sh` apenas termines la demo** para frenar el consumo.
+
 ## Estructura del proyecto
 
 ```
