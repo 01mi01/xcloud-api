@@ -217,7 +217,10 @@ function Profile() {
           <EditProfileModal
             user={user}
             onClose={() => setShowEditModal(false)}
-            onSave={(updated) => setUser((u) => (u ? { ...u, ...updated } : u))}
+            onSave={(updated) => {
+              setUser((u) => (u ? { ...u, ...updated } : u));
+              setShowEditModal(false);
+            }}
           />
         )}
       </main>

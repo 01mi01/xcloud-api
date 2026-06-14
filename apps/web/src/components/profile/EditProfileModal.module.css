@@ -187,6 +187,24 @@
   color: var(--color-danger);
 }
 
+.hiddenInput {
+  display: none;
+}
+
+.avatarImg {
+  width: 80px;
+  height: 80px;
+  border-radius: var(--radius-full);
+  object-fit: cover;
+  border: 3px solid var(--color-bg-primary);
+}
+
+.errorMsg {
+  font-size: var(--font-size-sm);
+  color: var(--color-danger);
+  padding: 4px 0;
+}
+
 @media (max-width: 600px) {
   .backdrop {
     padding-top: 0;
