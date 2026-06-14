@@ -8,7 +8,8 @@ interface StorageStackProps extends cdk.StackProps {
 }
 
 export class StorageStack extends cdk.Stack {
-  public readonly bucket: s3.Bucket;
+  public readonly bucket:    s3.Bucket;
+  public readonly webBucket: s3.Bucket;
 
   constructor(scope: Construct, id: string, props: StorageStackProps) {
     super(scope, id, props);
@@ -32,12 +33,23 @@ export class StorageStack extends cdk.Stack {
       ],
       lifecycleRules: [
         {
-          // Expire incomplete multipart uploads after 7 days
           abortIncompleteMultipartUploadAfter: cdk.Duration.days(7),
         },
       ],
     });
 
-    new cdk.CfnOutput(this, 'BucketName', { value: this.bucket.bucketName });
+    // Separate bucket for the React SPA static assets (HTML, JS, CSS).
+    // CloudFront accesses it via OAC — no public access needed.
+    this.webBucket = new s3.Bucket(this, 'WebBucket', {
+      bucketName:        `xcloud-web-${props.envConfig.name}-${this.account}`,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption:        s3.BucketEncryption.S3_MANAGED,
+      versioned:         false,
+      removalPolicy:     cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+    });
+
+    new cdk.CfnOutput(this, 'BucketName',    { value: this.bucket.bucketName });
+    new cdk.CfnOutput(this, 'WebBucketName', { value: this.webBucket.bucketName });
   }
 }

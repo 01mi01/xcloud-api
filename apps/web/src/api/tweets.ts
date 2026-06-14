@@ -26,3 +26,10 @@ export function likeTweet(tweetId: string): Promise<void> {
 export function unlikeTweet(tweetId: string): Promise<void> {
   return apiFetch<void>(`/v1/tweets/${encodeURIComponent(tweetId)}/like`, { method: "DELETE" });
 }
+
+export function retweetTweet(tweetId: string, comment?: string): Promise<{ tweet: RawTweet }> {
+  return apiFetch<{ tweet: RawTweet }>(`/v1/tweets/${encodeURIComponent(tweetId)}/retweet`, {
+    method: "POST",
+    body: comment ? { comment } : {},
+  });
+}
