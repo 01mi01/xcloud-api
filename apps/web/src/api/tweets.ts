@@ -1,11 +1,4 @@
-import {
-  CreateTweetCommand,
-  GetTweetCommand,
-  DeleteTweetCommand,
-  LikeTweetCommand,
-  UnlikeTweetCommand,
-} from "@xcloud/sdk-client";
-import { twitterClient, toApiError, toRawTweet } from "./twitter-client";
+import { apiFetch } from "./client";
 import type { RawTweet } from "../types";
 
 export interface CreateTweetInput {
@@ -14,52 +7,24 @@ export interface CreateTweetInput {
   replyToTweetId?: string;
 }
 
-export async function createTweet(input: CreateTweetInput): Promise<{ tweet: RawTweet }> {
-  try {
-    const out = await twitterClient.send(
-      new CreateTweetCommand({
-        content: input.content,
-        mediaUrls: input.mediaUrls,
-        replyToTweetId: input.replyToTweetId,
-      }),
-    );
-    return { tweet: toRawTweet(out.tweet ?? {}) };
-  } catch (err) {
-    throw toApiError(err);
-  }
+export function createTweet(input: CreateTweetInput): Promise<{ tweet: RawTweet }> {
+  return apiFetch<{ tweet: RawTweet }>("/v1/tweets", { method: "POST", body: input });
 }
 
-export async function getTweet(tweetId: string): Promise<{ tweet: RawTweet }> {
-  try {
-    const out = await twitterClient.send(new GetTweetCommand({ tweetId }));
-    return { tweet: toRawTweet(out.tweet ?? {}) };
-  } catch (err) {
-    throw toApiError(err);
-  }
+export function getTweet(tweetId: string): Promise<{ tweet: RawTweet }> {
+  return apiFetch<{ tweet: RawTweet }>(`/v1/tweets/${encodeURIComponent(tweetId)}`);
 }
 
-export async function deleteTweet(tweetId: string): Promise<void> {
-  try {
-    await twitterClient.send(new DeleteTweetCommand({ tweetId }));
-  } catch (err) {
-    throw toApiError(err);
-  }
+export function deleteTweet(tweetId: string): Promise<void> {
+  return apiFetch<void>(`/v1/tweets/${encodeURIComponent(tweetId)}`, { method: "DELETE" });
 }
 
-export async function likeTweet(tweetId: string): Promise<void> {
-  try {
-    await twitterClient.send(new LikeTweetCommand({ tweetId }));
-  } catch (err) {
-    throw toApiError(err);
-  }
+export function likeTweet(tweetId: string): Promise<void> {
+  return apiFetch<void>(`/v1/tweets/${encodeURIComponent(tweetId)}/like`, { method: "POST" });
 }
 
-export async function unlikeTweet(tweetId: string): Promise<void> {
-  try {
-    await twitterClient.send(new UnlikeTweetCommand({ tweetId }));
-  } catch (err) {
-    throw toApiError(err);
-  }
+export function unlikeTweet(tweetId: string): Promise<void> {
+  return apiFetch<void>(`/v1/tweets/${encodeURIComponent(tweetId)}/like`, { method: "DELETE" });
 }
 
 export function retweetTweet(tweetId: string, comment?: string): Promise<{ tweet: RawTweet }> {
