@@ -94,15 +94,17 @@ export class EcsStack extends cdk.Stack {
       listenerPathPattern: '/v1/auth*',
       listenerPriority:    10,
       environment: {
-        DB_HOST:              database.rds.instance.instanceEndpoint.hostname,
-        DB_NAME:              'xcloud_users',
+        DB_HOST:                database.rds.instance.instanceEndpoint.hostname,
+        DB_NAME:                'xcloud',
         COGNITO_USER_POOL_ID:   auth.cognito.userPool.userPoolId,
         COGNITO_CLIENT_ID:      auth.cognito.userPoolClient.userPoolClientId,
         USER_CREATED_QUEUE_URL: sqs.userCreated.queueUrl,
         AWS_REGION:             this.region,
       },
+      // Services read DB_USER/DB_PASSWORD — inject the RDS secret's fields directly.
       secrets: {
-        DB_SECRET: ecs.Secret.fromSecretsManager(database.rds.credentials),
+        DB_USER:     ecs.Secret.fromSecretsManager(database.rds.credentials, 'username'),
+        DB_PASSWORD: ecs.Secret.fromSecretsManager(database.rds.credentials, 'password'),
       },
       taskPolicies: [
         new iam.PolicyStatement({
@@ -125,13 +127,14 @@ export class EcsStack extends cdk.Stack {
       listenerPriority:    20,
       environment: {
         DB_HOST:                database.rds.instance.instanceEndpoint.hostname,
-        DB_NAME:                'xcloud_users',
+        DB_NAME:                'xcloud',
         FOLLOW_EVENT_QUEUE_URL: sqs.followEvent.queueUrl,
         USER_UPDATED_QUEUE_URL: sqs.userUpdated.queueUrl,
         AWS_REGION:             this.region,
       },
       secrets: {
-        DB_SECRET: ecs.Secret.fromSecretsManager(database.rds.credentials),
+        DB_USER:     ecs.Secret.fromSecretsManager(database.rds.credentials, 'username'),
+        DB_PASSWORD: ecs.Secret.fromSecretsManager(database.rds.credentials, 'password'),
       },
       taskPolicies: sqsAccess([sqs.followEvent, sqs.userUpdated]),
       desiredCount: envConfig.taskCount,
@@ -148,6 +151,7 @@ export class EcsStack extends cdk.Stack {
       listenerPriority:    30,
       environment: {
         CASSANDRA_CONTACT_POINTS:  `cassandra.${this.region}.amazonaws.com`,
+        CASSANDRA_KEYSPACE:        'xcloud',
         TWEET_CREATED_TOPIC_ARN:   sqs.tweetCreatedTopic.topicArn,
         TWEET_RETWEETED_TOPIC_ARN: sqs.tweetRetweetedTopic.topicArn,
         LIKE_EVENT_QUEUE_URL:      sqs.likeEvent.queueUrl,
@@ -162,7 +166,7 @@ export class EcsStack extends cdk.Stack {
       desiredCount: envConfig.taskCount,
     });
 
-    // ── feed-service ───────────────────────────────────────────────────
+    // ── feed-service (reads follows from RDS + tweets_by_author from Keyspaces; caches in Redis) ──
     const feedSvc = new MicroserviceConstruct(this, 'FeedService', {
       cluster,
       serviceName:         'feed-service',
@@ -171,13 +175,25 @@ export class EcsStack extends cdk.Stack {
       listenerPathPattern: '/v1/feed*',
       listenerPriority:    40,
       environment: {
-        REDIS_HOST:  cache.redis.cluster.attrRedisEndpointAddress,
-        REDIS_PORT:  '6379',
-        AWS_REGION:  this.region,
+        REDIS_HOST:               cache.redis.cluster.attrRedisEndpointAddress,
+        REDIS_PORT:               '6379',
+        DB_HOST:                  database.rds.instance.instanceEndpoint.hostname,
+        DB_NAME:                  'xcloud',
+        CASSANDRA_CONTACT_POINTS: `cassandra.${this.region}.amazonaws.com`,
+        CASSANDRA_KEYSPACE:       'xcloud',
+        AWS_REGION:               this.region,
       },
+      secrets: {
+        DB_USER:     ecs.Secret.fromSecretsManager(database.rds.credentials, 'username'),
+        DB_PASSWORD: ecs.Secret.fromSecretsManager(database.rds.credentials, 'password'),
+      },
+      taskPolicies: [
+        new iam.PolicyStatement({ actions: ['cassandra:*'], resources: ['*'] }),
+      ],
       desiredCount: envConfig.taskCount,
     });
     redisIngressFrom(feedSvc, 'feed');
+    rdsIngressFrom(feedSvc, 'feed');
 
     // ── fanout-service (consumes tweet.created via its own SQS queue) ───
     const fanoutSvc = new MicroserviceConstruct(this, 'FanoutService', {
@@ -191,12 +207,19 @@ export class EcsStack extends cdk.Stack {
         FANOUT_QUEUE_URL:         sqs.fanoutQueue.queueUrl,
         FANOUT_RETWEET_QUEUE_URL: sqs.fanoutRetweet.queueUrl,
         REDIS_HOST:               cache.redis.cluster.attrRedisEndpointAddress,
+        DB_HOST:                  database.rds.instance.instanceEndpoint.hostname,
+        DB_NAME:                  'xcloud',
         AWS_REGION:               this.region,
+      },
+      secrets: {
+        DB_USER:     ecs.Secret.fromSecretsManager(database.rds.credentials, 'username'),
+        DB_PASSWORD: ecs.Secret.fromSecretsManager(database.rds.credentials, 'password'),
       },
       taskPolicies: sqsAccess([sqs.fanoutQueue, sqs.fanoutRetweet]),
       desiredCount: envConfig.taskCount,
     });
     redisIngressFrom(fanoutSvc, 'fanout');
+    rdsIngressFrom(fanoutSvc, 'fanout');
 
     // ── media-service ──────────────────────────────────────────────────
     new MicroserviceConstruct(this, 'MediaService', {
@@ -219,8 +242,8 @@ export class EcsStack extends cdk.Stack {
       desiredCount: envConfig.taskCount,
     });
 
-    // ── notification-service (consumes tweet.liked + user.followed + tweet.retweeted) ──
-    new MicroserviceConstruct(this, 'NotificationService', {
+    // ── notification-service (consumes tweet.liked + user.followed + tweet.retweeted; persists to RDS) ──
+    const notificationSvc = new MicroserviceConstruct(this, 'NotificationService', {
       cluster,
       serviceName:         'notification-service',
       containerPort:       SERVICE_PORTS['notification-service'],
@@ -228,14 +251,21 @@ export class EcsStack extends cdk.Stack {
       listenerPathPattern: '/v1/notifications*',
       listenerPriority:    70,
       environment: {
-        LIKE_EVENT_QUEUE_URL:    sqs.likeEvent.queueUrl,
-        FOLLOW_EVENT_QUEUE_URL:  sqs.followEvent.queueUrl,
+        DB_HOST:                  database.rds.instance.instanceEndpoint.hostname,
+        DB_NAME:                  'xcloud',
+        LIKE_EVENT_QUEUE_URL:     sqs.likeEvent.queueUrl,
+        FOLLOW_EVENT_QUEUE_URL:   sqs.followEvent.queueUrl,
         NOTIFY_RETWEET_QUEUE_URL: sqs.notifyRetweet.queueUrl,
-        AWS_REGION:              this.region,
+        AWS_REGION:               this.region,
+      },
+      secrets: {
+        DB_USER:     ecs.Secret.fromSecretsManager(database.rds.credentials, 'username'),
+        DB_PASSWORD: ecs.Secret.fromSecretsManager(database.rds.credentials, 'password'),
       },
       taskPolicies: sqsAccess([sqs.likeEvent, sqs.followEvent, sqs.notifyRetweet]),
       desiredCount: envConfig.taskCount,
     });
+    rdsIngressFrom(notificationSvc, 'notification');
 
     // ── search-service (only when search is enabled) ───────────────────
     if (search) {

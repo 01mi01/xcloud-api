@@ -1,7 +1,6 @@
 import * as cdk  from 'aws-cdk-lib';
 import * as ec2  from 'aws-cdk-lib/aws-ec2';
 import * as rds  from 'aws-cdk-lib/aws-rds';
-import * as ssm  from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 
 export interface RdsConstructProps {
@@ -28,15 +27,15 @@ export class RdsConstruct extends Construct {
       username: 'xcloud_admin',
     });
 
-    const [instanceClass, instanceSize] = props.instanceClass.split('.');
+    // Config is e.g. 'db.t3.micro'. RDS prepends the 'db.' itself, so pass the
+    // bare type ('t3.micro'). (The old split() kept 'db' as the class and dropped
+    // the size → 'db.db.t3'.)
+    const instanceType = new ec2.InstanceType(props.instanceClass.replace(/^db\./, ''));
     this.instance = new rds.DatabaseInstance(this, 'Instance', {
       engine: rds.DatabaseInstanceEngine.postgres({
         version: rds.PostgresEngineVersion.VER_16,
       }),
-      instanceType: ec2.InstanceType.of(
-        instanceClass.toUpperCase() as ec2.InstanceClass,
-        instanceSize.toUpperCase() as ec2.InstanceSize,
-      ),
+      instanceType,
       vpc: props.vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
       securityGroups: [this.securityGroup],
@@ -50,9 +49,7 @@ export class RdsConstruct extends Construct {
         : cdk.RemovalPolicy.DESTROY,
     });
 
-    new ssm.StringParameter(this, 'EndpointParam', {
-      parameterName: `/xcloud/rds/endpoint`,
-      stringValue:   this.instance.instanceEndpoint.hostname,
-    });
+    // (No SSM endpoint parameter — consumers read instance.instanceEndpoint.hostname
+    // directly, and the write-only PutParameter is an unnecessary failure point.)
   }
 }
