@@ -54,6 +54,17 @@
   color: var(--color-text-secondary);
 }
 
+/* Replying to label */
+.replyingTo {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.replyHandle {
+  color: var(--color-accent);
+}
+
 /* Tweet text */
 .text {
   font-size: var(--font-size-md);

@@ -56,7 +56,7 @@ function TweetCard({ tweet, onDeleted, onReplyCreated }: Props) {
   const [retweetCount, setRetweetCount] = useState(tweet.retweetCount);
   const [showReplyModal, setShowReplyModal] = useState(false);
   const [repliesCount, setRepliesCount] = useState(tweet.repliesCount);
-  const [bookmarked, setBookmarked] = useState(() => isBookmarked(tweet.tweetId));
+  const [bookmarked, setBookmarked] = useState(tweet.bookmarked ?? isBookmarked(tweet.tweetId));
 
   // Menú de tres puntos
   const [menuOpen, setMenuOpen] = useState(false);
@@ -161,16 +161,18 @@ function TweetCard({ tweet, onDeleted, onReplyCreated }: Props) {
 
               {menuOpen && (
                 <div className={styles.menu}>
-                  <button
-                    className={styles.menuItem}
-                    onClick={(e) => { e.stopPropagation(); setEditing(true); setMenuOpen(false); }}
-                  >
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2}>
-                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-                      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-                    </svg>
-                    Editar
-                  </button>
+                  {tweet.repliesCount === 0 && (
+                    <button
+                      className={styles.menuItem}
+                      onClick={(e) => { e.stopPropagation(); setEditing(true); setMenuOpen(false); }}
+                    >
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                      Editar
+                    </button>
+                  )}
                   <button
                     className={`${styles.menuItem} ${styles.menuItemDanger}`}
                     onClick={(e) => { e.stopPropagation(); setMenuOpen(false); setShowDeleteConfirm(true); }}
@@ -188,6 +190,12 @@ function TweetCard({ tweet, onDeleted, onReplyCreated }: Props) {
             </div>
           )}
         </div>
+
+        {tweet.replyToAuthorHandle && (
+          <p className={styles.replyingTo}>
+            Replying to <span className={styles.replyHandle}>@{tweet.replyToAuthorHandle}</span>
+          </p>
+        )}
 
         {/* Contenido — normal o modo edición */}
         {editing ? (

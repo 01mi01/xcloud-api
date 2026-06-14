@@ -37,6 +37,5 @@ export const getTweetsByIds = async (tweetIds: string[]): Promise<HydratedTweet[
 
     const results = await Promise.all(requests);
 
-    // Excluir replies del feed principal — solo tweets raíz
-    return results.filter((t): t is HydratedTweet => t !== null && t.replyToTweetId === null);
+    return results.filter((t): t is HydratedTweet => t !== null);
 };

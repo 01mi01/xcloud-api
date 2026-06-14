@@ -1,14 +1,29 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as tweetsApi from "../api/tweets";
 import { hydrateTweets } from "../api/hydrate";
 import { useAuth } from "../context/AuthContext";
+import { STORAGE_KEY } from "./Bookmarks";
 import type { Tweet } from "../types";
 import LeftSidebar from "../components/layout/LeftSidebar";
 import RightSidebar from "../components/layout/RightSidebar";
 import TweetCard from "../components/tweet/TweetCard";
 import Avatar from "../components/common/Avatar";
 import styles from "./TweetDetail.module.css";
+
+function isBookmarked(tweetId: string): boolean {
+  try {
+    const ids: string[] = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
+    return ids.includes(tweetId);
+  } catch { return false; }
+}
+function toggleBookmark(tweetId: string, add: boolean): void {
+  try {
+    const ids: string[] = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
+    const next = add ? [...new Set([...ids, tweetId])] : ids.filter((id) => id !== tweetId);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch { /* ignore */ }
+}
 
 const MAX_CHARS = 280;
 
@@ -40,6 +55,29 @@ function TweetDetail() {
   const [replyContent, setReplyContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // Menú tres puntos
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editContent, setEditContent] = useState("");
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuOpen]);
+
+  // Estados de acciones
+  const [liked, setLiked] = useState(false);
+  const [likesCount, setLikesCount] = useState(0);
+  const [retweeted, setRetweeted] = useState(false);
+  const [retweetCount, setRetweetCount] = useState(0);
+  const [bookmarked, setBookmarked] = useState(false);
+
   const remaining = MAX_CHARS - replyContent.length;
   const isEmpty = replyContent.trim().length === 0;
 
@@ -60,12 +98,54 @@ function TweetDetail() {
       .getTweet(tweetId)
       .then(async (res) => {
         const hydrated = await hydrateTweets([res.tweet], identity?.userId);
-        setTweet(hydrated[0] ?? null);
+        const t = hydrated[0] ?? null;
+        setTweet(t);
+        if (t) {
+          setLiked(t.liked);
+          setLikesCount(t.likesCount);
+          setRetweeted(t.retweeted);
+          setRetweetCount(t.retweetCount);
+          setBookmarked(t.bookmarked ?? isBookmarked(t.tweetId));
+          setEditContent(t.content);
+        }
         await loadReplies(tweetId);
       })
       .catch(() => setTweet(null))
       .finally(() => setLoading(false));
   }, [tweetId, identity?.userId, loadReplies]);
+
+  const handleLike = async () => {
+    if (!tweet) return;
+    const wasLiked = liked;
+    setLiked(!wasLiked);
+    setLikesCount((n) => wasLiked ? n - 1 : n + 1);
+    try {
+      if (wasLiked) await tweetsApi.unlikeTweet(tweet.tweetId);
+      else await tweetsApi.likeTweet(tweet.tweetId);
+    } catch {
+      setLiked(wasLiked);
+      setLikesCount((n) => wasLiked ? n + 1 : n - 1);
+    }
+  };
+
+  const handleRetweet = async () => {
+    if (!tweet || retweeted) return;
+    setRetweeted(true);
+    setRetweetCount((n) => n + 1);
+    try {
+      await tweetsApi.retweetTweet(tweet.tweetId);
+    } catch {
+      setRetweeted(false);
+      setRetweetCount((n) => n - 1);
+    }
+  };
+
+  const handleBookmark = () => {
+    if (!tweet) return;
+    const next = !bookmarked;
+    setBookmarked(next);
+    toggleBookmark(tweet.tweetId, next);
+  };
 
   const handleReply = async () => {
     if (!tweet || isEmpty || submitting) return;
@@ -131,45 +211,121 @@ function TweetDetail() {
               <span className={styles.displayName}>{tweet.author.displayName}</span>
               <span className={styles.handle}>@{tweet.author.handle}</span>
             </div>
+
+            {/* Menú tres puntos — solo para el autor */}
+            {identity?.userId === tweet.author.userId && (
+              <div className={styles.menuWrapper} ref={menuRef}>
+                <button
+                  className={styles.menuTrigger}
+                  onClick={() => setMenuOpen((o) => !o)}
+                  title="Más opciones"
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                    <circle cx="5" cy="12" r="2" />
+                    <circle cx="12" cy="12" r="2" />
+                    <circle cx="19" cy="12" r="2" />
+                  </svg>
+                </button>
+
+                {menuOpen && (
+                  <div className={styles.menu}>
+                    {tweet.repliesCount === 0 && (
+                      <button
+                        className={styles.menuItem}
+                        onClick={() => { setEditing(true); setMenuOpen(false); }}
+                      >
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2}>
+                          <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                        Editar
+                      </button>
+                    )}
+                    <button
+                      className={`${styles.menuItem} ${styles.menuItemDanger}`}
+                      onClick={() => { setShowDeleteConfirm(true); setMenuOpen(false); }}
+                    >
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+                        <path d="M10 11v6M14 11v6" />
+                        <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+                      </svg>
+                      Eliminar
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          <p className={styles.content}>{tweet.content}</p>
+          {/* Contenido — normal o modo edición */}
+          {editing ? (
+            <div className={styles.editBox}>
+              <textarea
+                className={styles.editTextarea}
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                maxLength={280}
+                autoFocus
+                rows={3}
+              />
+              <div className={styles.editActions}>
+                <button className={styles.editCancel} onClick={() => { setEditing(false); setEditContent(tweet.content); }}>
+                  Cancelar
+                </button>
+                <button
+                  className={styles.editSave}
+                  onClick={() => {
+                    // TODO AWS: await tweetsApi.updateTweet(tweet.tweetId, { content: editContent });
+                    setTweet((t) => t ? { ...t, content: editContent } : t);
+                    setEditing(false);
+                  }}
+                  disabled={editContent.trim().length === 0}
+                >
+                  Guardar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className={styles.content}>{tweet.content}</p>
+          )}
 
           <p className={styles.timestamp}>{formatTimeFull(tweet.createdAt)}</p>
 
-          <div className={styles.stats}>
-            <span>
-              <strong>{formatCount(tweet.retweetCount)}</strong>{" "}
-              <span className={styles.statLabel}>Reposts</span>
-            </span>
-            <span>
-              <strong>{formatCount(tweet.likesCount)}</strong>{" "}
-              <span className={styles.statLabel}>Likes</span>
-            </span>
-            <span>
-              <strong>{formatCount(tweet.repliesCount)}</strong>{" "}
-              <span className={styles.statLabel}>Replies</span>
-            </span>
-          </div>
-
           <div className={styles.actions}>
-            <button className={`${styles.actionBtn} ${styles.replyBtn}`}>
+            <button
+              className={`${styles.actionBtn} ${styles.replyBtn}`}
+              onClick={() => document.querySelector("textarea")?.focus()}
+            >
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={1.75}>
                 <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
               </svg>
+              {tweet.repliesCount > 0 && <span className={styles.actionCount}>{formatCount(tweet.repliesCount)}</span>}
             </button>
-            <button className={`${styles.actionBtn} ${styles.retweetBtn}`}>
+            <button
+              className={`${styles.actionBtn} ${styles.retweetBtn} ${retweeted ? styles.retweeted : ""}`}
+              onClick={handleRetweet}
+            >
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={1.75}>
                 <path d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3" />
               </svg>
+              {retweetCount > 0 && <span className={styles.actionCount}>{formatCount(retweetCount)}</span>}
             </button>
-            <button className={`${styles.actionBtn} ${styles.likeBtn}`}>
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={1.75}>
+            <button
+              className={`${styles.actionBtn} ${styles.likeBtn} ${liked ? styles.liked : ""}`}
+              onClick={handleLike}
+            >
+              <svg viewBox="0 0 24 24" width="20" height="20" fill={liked ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.75}>
                 <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" />
               </svg>
+              {likesCount > 0 && <span className={styles.actionCount}>{formatCount(likesCount)}</span>}
             </button>
-            <button className={`${styles.actionBtn} ${styles.bookmarkBtn}`}>
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={1.75}>
+            <button
+              className={`${styles.actionBtn} ${styles.bookmarkBtn} ${bookmarked ? styles.bookmarked : ""}`}
+              onClick={handleBookmark}
+            >
+              <svg viewBox="0 0 24 24" width="20" height="20" fill={bookmarked ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.75}>
                 <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" />
               </svg>
             </button>
@@ -216,6 +372,36 @@ function TweetDetail() {
         </div>
 
       </main>
+
+      {/* Delete confirmation modal */}
+      {showDeleteConfirm && (
+        <div className={styles.confirmBackdrop} onClick={() => setShowDeleteConfirm(false)}>
+          <div className={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.confirmTitle}>¿Eliminar publicación?</h2>
+            <p className={styles.confirmMsg}>
+              Esta acción es irreversible y la publicación se eliminará de tu perfil, de la cronología de tus seguidores y de los resultados de búsqueda.
+            </p>
+            <button
+              className={styles.confirmDeleteBtn}
+              onClick={async () => {
+                setShowDeleteConfirm(false);
+                try {
+                  await tweetsApi.deleteTweet(tweet.tweetId);
+                  navigate(-1);
+                } catch { /* silencioso */ }
+              }}
+            >
+              Eliminar
+            </button>
+            <button
+              className={styles.confirmCancelBtn}
+              onClick={() => setShowDeleteConfirm(false)}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       <RightSidebar />
     </div>

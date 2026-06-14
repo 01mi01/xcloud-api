@@ -2,6 +2,14 @@ import type { RawTweet, Tweet, User } from "../types";
 import { apiFetch } from "./client";
 import { getLikeStatus } from "./tweets";
 
+const BOOKMARK_KEY = "xcloud_bookmarks";
+function getBookmarkedIds(): Set<string> {
+  try {
+    const ids: string[] = JSON.parse(localStorage.getItem(BOOKMARK_KEY) ?? "[]");
+    return new Set(ids);
+  } catch { return new Set(); }
+}
+
 /**
  * Fetch a user by `userId`. The user-service does not expose this directly
  * (it serves GET /v1/users/:handle), so we provide a graceful fallback that
@@ -46,17 +54,37 @@ export async function hydrateTweets(raw: RawTweet[], currentUserId?: string): Pr
     ? await Promise.all(raw.map((t) => getLikeStatus(t.tweetId).then((r) => r.liked).catch(() => false)))
     : raw.map(() => false);
 
+  const bookmarkedIds = getBookmarkedIds();
+
+  // Resolve replyToAuthorHandle: for reply tweets, fetch the parent tweet's authorId
+  // then look up their handle from the already-built user map (or fetch if not cached)
+  const replyToHandles = await Promise.all(
+    raw.map(async (t) => {
+      if (!t.replyToTweetId) return null;
+      try {
+        const parent = await apiFetch<{ tweet: { authorId: string } }>(
+          `/v1/tweets/${encodeURIComponent(t.replyToTweetId)}`
+        );
+        const parentAuthorId = parent.tweet.authorId;
+        const user = byId.get(parentAuthorId) ?? await getUserById(parentAuthorId);
+        return user?.handle ?? null;
+      } catch { return null; }
+    })
+  );
+
   return raw.map((t, i) => ({
-    tweetId:        t.tweetId,
-    content:        t.content,
-    author:         byId.get(t.authorId) ?? fallbackUser(t.authorId),
-    mediaUrls:      t.mediaUrls ?? [],
-    likesCount:     t.likesCount ?? 0,
-    retweetCount:   t.retweetCount ?? 0,
-    repliesCount:   t.repliesCount ?? 0,
-    createdAt:      t.createdAt,
-    replyToTweetId: t.replyToTweetId ?? null,
-    liked:          likeStatuses[i],
-    retweeted:      false,
+    tweetId:             t.tweetId,
+    content:             t.content,
+    author:              byId.get(t.authorId) ?? fallbackUser(t.authorId),
+    mediaUrls:           t.mediaUrls ?? [],
+    likesCount:          t.likesCount ?? 0,
+    retweetCount:        t.retweetCount ?? 0,
+    repliesCount:        t.repliesCount ?? 0,
+    createdAt:           t.createdAt,
+    replyToTweetId:      t.replyToTweetId ?? null,
+    liked:               likeStatuses[i],
+    retweeted:           false,
+    bookmarked:          bookmarkedIds.has(t.tweetId),
+    replyToAuthorHandle: replyToHandles[i],
   }));
 }
