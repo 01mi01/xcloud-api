@@ -88,8 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback(
     async (handle: string, email: string, password: string) => {
-      await authApi.register(handle, email, password);
-      const { token } = await authApi.login(email, password);
+      // §3.1 — register returns a JWT directly; no separate login needed.
+      const { token } = await authApi.register(handle, email, password);
       await applyToken(token);
     },
     [applyToken],
