@@ -168,6 +168,19 @@ requests, not the elastic client. Key points (all in
   (or `type=users`) after creating a tweet/user; check
   `aws logs tail /xcloud/search-service` for `Indexing tweet …` lines.
 
+## Media (S3) — public-read bucket
+media-service uploads images to the `xcloud-media-<env>-<account>` bucket and
+returns the object's `https://<bucket>.s3.<region>.amazonaws.com/<key>` URL, which
+the SPA renders directly as `<img src>`. That bucket is therefore **public-read**
+(`storage-stack.ts`): `blockPublicAccess` allows bucket policies (ACLs stay
+blocked) and a `PublicReadGetObject` statement grants `s3:GetObject` on
+`<bucket>/*` only — no `s3:ListBucket`, and keys are unguessable UUIDs, so objects
+can't be enumerated. Without this the bucket was `BLOCK_ALL` and every image 403'd.
+(The alternative — fronting media through CloudFront like the SPA — hits a
+storage<->cdn OAI cross-stack cycle under CDK 2.150's lack of an OAC L2, so the
+public bucket is the pragmatic beta choice.) Changing it is an in-place bucket
+update: `cdk deploy xcloud-<env>-storage` — no image or web rebuild.
+
 ## RDS PostgreSQL — SSL required
 `rds.force_ssl=1`, so **every** PG client (auth/user/notification/feed/fanout)
 sets `ssl: { rejectUnauthorized: false }` in prod (CA not in Node's bundle;
