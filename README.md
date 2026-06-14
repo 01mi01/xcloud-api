@@ -422,10 +422,29 @@ Para levantar y bajar el entorno beta con una sola orden cada uno (desde la raí
 correcta y no hay forma de desplegar en la equivocada:
 
 ```bash
-./deploy-beta.sh personal     # bootstrap (si falta) + cdk deploy --all (env=beta)
+./deploy-beta.sh personal     # build+push imágenes a ECR + cdk deploy --all (env=beta)
+./bootstrap-beta.sh personal  # crea el schema de Amazon Keyspaces (Postgres se crea solo al arrancar)
+./deploy-web.sh personal      # build del SPA + s3 sync + invalidación de CloudFront
 ./status-beta.sh personal     # READ-ONLY: ¿queda algo corriendo? ¿me están cobrando?
 ./destroy-beta.sh personal    # cdk destroy --all (env=beta) — borra TODO
 ```
+
+✅ **Desplegado y funcionando end-to-end** (us-east-2): auth, tweets, perfiles,
+follows, feed, media y el **SPA React en CloudFront**. El flujo completo y, sobre
+todo, las **incompatibilidades reales de Amazon Keyspaces** que se encontraron y
+corrigieron (batches `LOGGED`, consistencia `LOCAL_ONE`, `SELECT COUNT(*)`), más
+el SSL de RDS y el guard FIFO de SNS, están en
+[docs/runbooks/aws-deploy.md](docs/runbooks/aws-deploy.md). Resumen del schema:
+**Postgres (RDS)** lo crean los servicios al arrancar (`ensurePostgresSchema`,
+porque RDS está en subredes privadas); **Cassandra (Keyspaces)** se crea con
+`./bootstrap-beta.sh` desde tu máquina (endpoint público, TLS + SigV4).
+
+**Frontend en AWS:** el stack `cdn` (S3 privado + CloudFront) sirve el SPA en `/`
+y enruta `/api/*` al ALB como segundo origen (una CloudFront Function quita el
+prefijo `/api`) — así las llamadas del SPA son same-origin (sin CORS ni
+mixed-content). Los archivos se suben por CLI con `./deploy-web.sh` (no con
+`BucketDeployment`). Beta tiene `enableSearch:false`, así que la búsqueda no está
+disponible ahí.
 
 `status-beta.sh` no cambia nada: lista los stacks beta y cuenta los recursos
 "always-on" facturables (NAT Gateway, tasks Fargate, RDS, ALB, ElastiCache) y
