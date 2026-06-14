@@ -8,6 +8,9 @@ const router = Router();
 // Especificas antes que parametrizadas para evitar shadowing.
 // /by-id, /:userId/followers y /:userId/following no están en el modelo Smithy —
 // son handlers Express planos (rutas de dos segmentos, no chocan con /:handle).
+// POST /reindex (un solo segmento) no choca con GET /:handle. Backfill del índice
+// de búsqueda de usuarios — republica user.updated para todos.
+router.post("/reindex", verifyToken, ctrl.reindexUsers);
 router.get("/by-id/:userId", ctrl.getUserById);
 router.get("/:userId/followers", ctrl.getFollowers);
 router.get("/:userId/following", ctrl.getFollowing);

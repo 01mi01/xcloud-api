@@ -18,6 +18,12 @@ export const findById = async (userId: string): Promise<User | null> => {
     return rows[0] ? fromRow(rows[0]) : null;
 };
 
+// All users (capped) — used to backfill the search index (republish user.updated).
+export const findAll = async (limit = 1000): Promise<User[]> => {
+    const { rows } = await pool.query(`${WITH_COUNTS} ORDER BY u.handle LIMIT $1`, [limit]);
+    return rows.map(fromRow);
+};
+
 export const upsert = async (userId: string, handle: string): Promise<User> => {
     const { rows } = await pool.query(
         `INSERT INTO users (user_id, handle, display_name)

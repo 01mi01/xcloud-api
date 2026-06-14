@@ -40,13 +40,14 @@ const main = async (): Promise<void> => {
     }
 
     // Start event consumers for tweet + user indexing (Kafka local / SQS prod).
-    try {
-        await startTweetIndexConsumer();
-        await startUserIndexConsumers();
-        console.log("Search Service — index consumers running");
-    } catch (err) {
-        console.error("Failed to start index consumers:", describeErr(err));
-    }
+    // In prod each consume() is an infinite SQS long-poll loop that never resolves,
+    // so they must be started CONCURRENTLY (fire-and-forget) — awaiting them
+    // sequentially would start only the tweet consumer and never the user ones
+    // (the bug that left the user search index permanently empty). Per-message
+    // errors are handled inside consume().
+    startTweetIndexConsumer().catch((err) => console.error("Tweet index consumer failed:", describeErr(err)));
+    startUserIndexConsumers().catch((err) => console.error("User index consumers failed:", describeErr(err)));
+    console.log("Search Service — index consumers started");
 };
 
 main();

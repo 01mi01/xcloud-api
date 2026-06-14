@@ -40,6 +40,20 @@ export const updateProfile = async (userId: string, handle: string, fields: Upda
     return user;
 };
 
+/**
+ * Re-publish user.updated for every user so search-service (re)indexes them.
+ * Backfills the user search index — events only flow forward, so users created
+ * before search went live (or before a fresh index) aren't searchable otherwise.
+ * Returns how many users were republished.
+ */
+export const reindexAll = async (): Promise<number> => {
+    const users = await repo.findAll();
+    for (const user of users) {
+        await publishUserUpdated(user);
+    }
+    return users.length;
+};
+
 export const follow = async (followerId: string, followingId: string): Promise<void> => {
     const target = await repo.findById(followingId);
     if (!target) throw new UserNotFoundError("Target user not found");

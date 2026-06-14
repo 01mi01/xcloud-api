@@ -167,6 +167,22 @@ requests, not the elastic client. Key points (all in
 - To verify after deploy: `curl "http://<alb>/v1/search?q=<term>&type=tweets"`
   (or `type=users`) after creating a tweet/user; check
   `aws logs tail /xcloud/search-service` for `Indexing tweet …` lines.
+- **Consumers must start CONCURRENTLY, not sequentially.** In prod the SQS
+  `consume()` is an infinite long-poll loop that never resolves (Kafka's returns,
+  which is why this only bit on AWS). search-service therefore fires its tweet +
+  user consumers without awaiting them in series (`index.ts`), and starts the
+  `user.created` + `user.updated` consumers with `Promise.all` (`user-index.consumer.ts`).
+  The old sequential `await c1.consume(); await c2.consume();` started only the
+  FIRST consumer — tweet search worked but the **user index stayed permanently
+  empty** (and the reindex `user.updated` events were never consumed). Mirror the
+  notification-service pattern when adding consumers.
+- **Backfill the USER index** (users created before search went live aren't
+  indexed — events only flow forward): `POST /v1/users/reindex` (auth-gated)
+  republishes `user.updated` for every user, so search-service re-indexes them.
+  From the logged-in SPA's devtools console:
+  `fetch('/api/v1/users/reindex',{method:'POST',headers:{Authorization:'Bearer '+localStorage.getItem('xcloud_token')}}).then(r=>r.json()).then(console.log)`
+  → `{ reindexed: N }`. (Tweets have no equivalent backfill yet — only new
+  tweets are indexed.)
 
 ## Media (S3) — public-read bucket
 media-service uploads images to the `xcloud-media-<env>-<account>` bucket and
@@ -201,9 +217,13 @@ publishes → fanout never runs → feed stays empty.
   is remapped to `index.html` (SPA deep links); `404` is left alone so real API
   404s pass through as JSON.
 - Upload is **CLI** (`deploy-web.sh`), not `BucketDeployment` — see step 3.
-- **WebSocket** (`/api/v1/notifications/ws`) rides the same `/api/*` behaviour.
-  If live notifications drop every ~60s, raise the ALB `idleTimeout` or add a
-  client heartbeat (ALB closes idle WS connections at 60s by default).
+- **WebSocket** (`/api/v1/notifications/ws`) rides the same `/api/*` behaviour
+  (CloudFront tunnels WS to the ALB origin; the viewer-request function strips
+  `/api` and the `?token=` query survives). Kept alive end-to-end by three
+  things: notification-service **pings every 30s** (`ws.server.ts` heartbeat,
+  also reaps dead sockets), the ALB `idleTimeout` is raised to **300s**
+  (`gateway-stack.ts`), and the SPA **auto-reconnects** with backoff on close
+  (`NotificationsContext.tsx`) so a drop (deploy, blip) self-heals.
 
 ## Other things to watch
 - **RDS ad-hoc SQL:** private subnets — use SSM port-forwarding or a bastion for
