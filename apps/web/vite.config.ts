@@ -14,11 +14,17 @@ const SERVICE_PORTS: Record<string, number> = {
   media:         3006,
 }
 
+// Point the SPA at a deployed environment by setting VITE_API_TARGET to the ALB
+// URL (e.g. http://xcloud-beta-xxxx.us-east-2.elb.amazonaws.com). The ALB does
+// path-based routing for every service, so all /api/v1/* go to the one target.
+// Unset → local dev: each service proxied to its own localhost port.
+const API_TARGET = process.env.VITE_API_TARGET
+
 const proxy = Object.fromEntries(
   Object.entries(SERVICE_PORTS).map(([name, port]) => [
     `/api/v1/${name}`,
     {
-      target:       `http://localhost:${port}`,
+      target:       API_TARGET || `http://localhost:${port}`,
       changeOrigin: true,
       // ws:true proxies the notification-service WebSocket (/api/v1/notifications/ws);
       // harmless for the HTTP-only services.
