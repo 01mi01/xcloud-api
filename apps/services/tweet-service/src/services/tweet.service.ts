@@ -43,7 +43,33 @@ export const createTweet = async (authorId: string, input: CreateTweetInput): Pr
 export const getTweet = async (tweetId: string): Promise<Tweet> => {
     const tweet = await repo.findById(tweetId);
     if (!tweet) throw new TweetNotFoundError(`Tweet '${tweetId}' not found`);
+    tweet.repliesCount = await repo.countReplies(tweetId);
     return tweet;
+};
+
+export const getTweetsByAuthor = async (authorId: string, limit = 20): Promise<Tweet[]> => {
+    return repo.findByAuthor(authorId, limit);
+};
+
+export const getReplies = async (tweetId: string, limit = 50): Promise<Tweet[]> => {
+    return repo.findReplies(tweetId, limit);
+};
+
+export const getLikedTweets = async (userId: string, limit = 50): Promise<Tweet[]> => {
+    return repo.likedByUser(userId, limit);
+};
+
+// Per-viewer interaction state for a batch of tweets (which ones this user
+// has liked / retweeted) — powers the highlighted button state on reload.
+export const getInteractions = async (
+    userId: string,
+    tweetIds: string[],
+): Promise<{ liked: string[]; retweeted: string[] }> => {
+    const [liked, retweeted] = await Promise.all([
+        repo.likedTweetIds(userId, tweetIds),
+        repo.retweetedTweetIds(userId, tweetIds),
+    ]);
+    return { liked, retweeted };
 };
 
 export const deleteTweet = async (tweetId: string, requesterId: string): Promise<void> => {

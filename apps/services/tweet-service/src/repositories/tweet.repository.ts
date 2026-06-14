@@ -20,24 +20,92 @@ export const findById = async (tweetId: string): Promise<Tweet | null> => {
     return row ? fromRow(row as unknown as TweetRow) : null;
 };
 
+export const findByAuthor = async (authorId: string, limit = 20): Promise<Tweet[]> => {
+    // tweets_by_author is clustered by created_at DESC, so this returns newest first.
+    const index = await client.execute(
+        "SELECT tweet_id FROM tweets_by_author WHERE author_id = ? LIMIT ?",
+        [cassandra.types.Uuid.fromString(authorId), limit],
+        { prepare: true }
+    );
+    const ids = index.rows.map((r) => r.tweet_id);
+    // Hydrate each id from the main tweets table (full row: counts, media, etc.).
+    const rows = await Promise.all(
+        ids.map((id) =>
+            client.execute("SELECT * FROM tweets WHERE tweet_id = ?", [id], { prepare: true }).then((r) => r.first())
+        )
+    );
+    return rows.filter(Boolean).map((row) => fromRow(row as unknown as TweetRow));
+};
+
+export const findReplies = async (tweetId: string, limit = 50): Promise<Tweet[]> => {
+    const index = await client.execute(
+        "SELECT tweet_id FROM replies_by_tweet WHERE reply_to_tweet_id = ? LIMIT ?",
+        [cassandra.types.Uuid.fromString(tweetId), limit],
+        { prepare: true }
+    );
+    const ids = index.rows.map((r) => r.tweet_id);
+    const rows = await Promise.all(
+        ids.map((id) =>
+            client.execute("SELECT * FROM tweets WHERE tweet_id = ?", [id], { prepare: true }).then((r) => r.first())
+        )
+    );
+    return rows.filter(Boolean).map((row) => fromRow(row as unknown as TweetRow));
+};
+
+export const likedByUser = async (userId: string, limit = 50): Promise<Tweet[]> => {
+    const index = await client.execute(
+        "SELECT tweet_id FROM likes_by_user WHERE user_id = ? LIMIT ?",
+        [cassandra.types.Uuid.fromString(userId), limit],
+        { prepare: true }
+    );
+    const ids = index.rows.map((r) => r.tweet_id);
+    const rows = await Promise.all(
+        ids.map((id) =>
+            client.execute("SELECT * FROM tweets WHERE tweet_id = ?", [id], { prepare: true }).then((r) => r.first())
+        )
+    );
+    return rows.filter(Boolean).map((row) => fromRow(row as unknown as TweetRow));
+};
+
+export const countReplies = async (tweetId: string): Promise<number> => {
+    const result = await client.execute(
+        "SELECT COUNT(*) AS c FROM replies_by_tweet WHERE reply_to_tweet_id = ?",
+        [cassandra.types.Uuid.fromString(tweetId)],
+        { prepare: true }
+    );
+    return Number(result.first()?.c ?? 0);
+};
+
 export const insert = async ({ tweetId, authorId, content, mediaUrls, replyToTweetId }: InsertTweetParams): Promise<Tweet> => {
     const id     = cassandra.types.Uuid.fromString(tweetId);
     const author = cassandra.types.Uuid.fromString(authorId);
     const now    = new Date();
 
-    await client.batch([
+    const replyParent = replyToTweetId ? cassandra.types.Uuid.fromString(replyToTweetId) : null;
+
+    const queries = [
         {
             query: `INSERT INTO tweets
                         (tweet_id, author_id, content, media_urls, reply_to_tweet_id, likes_count, retweet_count, created_at)
                     VALUES (?, ?, ?, ?, ?, 0, 0, ?)`,
-            params: [id, author, content, mediaUrls ?? [], replyToTweetId ? cassandra.types.Uuid.fromString(replyToTweetId) : null, now],
+            params: [id, author, content, mediaUrls ?? [], replyParent, now],
         },
         {
             query: `INSERT INTO tweets_by_author (author_id, created_at, tweet_id, content)
                     VALUES (?, ?, ?, ?)`,
             params: [author, now, id, content],
         },
-    ], { prepare: true });
+    ];
+    // Index replies under their parent so a tweet's replies can be listed.
+    if (replyParent) {
+        queries.push({
+            query: `INSERT INTO replies_by_tweet (reply_to_tweet_id, created_at, tweet_id)
+                    VALUES (?, ?, ?)`,
+            params: [replyParent, now, id],
+        });
+    }
+
+    await client.batch(queries, { prepare: true });
 
     const result = await client.execute(
         "SELECT * FROM tweets WHERE tweet_id = ?",
@@ -147,3 +215,21 @@ export const retweetExists = async (userId: string, tweetId: string): Promise<bo
     );
     return result.rowLength > 0;
 };
+
+// For a viewer, return which of the given tweetIds they have liked / retweeted.
+// Single partition (user_id) + IN on the clustering key (tweet_id) — efficient.
+const interactedIds = async (table: string, userId: string, tweetIds: string[]): Promise<string[]> => {
+    if (tweetIds.length === 0) return [];
+    const result = await client.execute(
+        `SELECT tweet_id FROM ${table} WHERE user_id = ? AND tweet_id IN ?`,
+        [cassandra.types.Uuid.fromString(userId), tweetIds.map((id) => cassandra.types.Uuid.fromString(id))],
+        { prepare: true }
+    );
+    return result.rows.map((r) => r.tweet_id.toString());
+};
+
+export const likedTweetIds = (userId: string, tweetIds: string[]): Promise<string[]> =>
+    interactedIds("likes_by_user", userId, tweetIds);
+
+export const retweetedTweetIds = (userId: string, tweetIds: string[]): Promise<string[]> =>
+    interactedIds("retweets_by_user", userId, tweetIds);

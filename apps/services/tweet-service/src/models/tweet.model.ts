@@ -6,6 +6,8 @@ export interface Tweet {
     replyToTweetId:   string | null;
     likesCount:       number;
     retweetCount:     number;
+    // Set by getTweet (counted from replies_by_tweet); omitted elsewhere.
+    repliesCount?:    number;
     createdAt:        Date | string;
 }
 

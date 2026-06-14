@@ -41,10 +41,10 @@ xcloud-api/
 | user | 3001 (`USER_PORT`) | PostgreSQL `users`,`follows` | publishes `user.followed` |
 | tweet | 3002 (`TWEET_PORT`) | Cassandra/Keyspaces | publishes `tweet.created`, `tweet.liked` |
 | feed | 3003 (`FEED_PORT`) | Redis + Cassandra | — (HTTP hydration) |
-| notification | 3004 (`NOTIFICATION_PORT`) | PostgreSQL `notifications` | consumes `tweet.liked`, `user.followed` |
-| search | 3005 (`SEARCH_PORT`) | Elasticsearch / OpenSearch | consumes `tweet.created` |
-| media | 3006 (`MEDIA_PORT`) | S3 (prod) | — (stub: `/health` + 503) |
-| fanout | worker; `/health` 3007 (`FANOUT_PORT`) | Redis + PostgreSQL | consumes `tweet.created` |
+| notification | 3004 (`NOTIFICATION_PORT`) | PostgreSQL `notifications` | consumes `tweet.liked`, `tweet.retweeted`, `user.followed`; **WebSocket push** at `/v1/notifications/ws` |
+| search | 3005 (`SEARCH_PORT`) | Elasticsearch / OpenSearch | consumes `tweet.created`, `user.created`, `user.updated` |
+| media | 3006 (`MEDIA_PORT`) | local disk (dev) / S3 (prod) | — (image uploads: `POST /v1/media`, multer; `NODE_ENV`-gated storage) |
+| fanout | worker; `/health` 3007 (`FANOUT_PORT`) | Redis + PostgreSQL | consumes `tweet.created`, `tweet.retweeted` |
 
 ## Hybrid messaging (the key architectural decision)
 
@@ -59,7 +59,8 @@ Use `createPublisher({clientId})` / `createConsumer({clientId, groupId})`. Prod 
 Layered: `src/{index.ts, app.ts, config/, routes/, controllers/, services/, repositories/, events|consumers/}`.
 - `index.ts` loads the **root `.env`** via `path.resolve(__dirname, "../../../../.env")` (4 up from `src/`); config/consumer files use 5 up. There is **no** per-service `.env`.
 - Shared auth: routes import `verifyToken` from `@xcloud/shared` (the 5 old local copies were consolidated). Error handler, logger, pagination, jwt utils also live there.
-- API routes are `/v1/<resource>`. The web SPA proxies `/api/v1/<service>/*` → `http://localhost:<port>/v1/<service>/*` (`apps/web/vite.config.ts`).
+- API routes are `/v1/<resource>`. The web SPA proxies `/api/v1/<service>/*` → `http://localhost:<port>/v1/<service>/*` (`apps/web/vite.config.ts`); the proxy entries set `ws:true` so the notification WebSocket (`/api/v1/notifications/ws`) is proxied too.
+- **Not every route is Smithy-modeled.** tweet-service serves modeled ops (create/get/delete/like/retweet) plus **hand-written** non-modeled routes: `GET /author/:authorId` (profile posts), `GET /:tweetId/replies`, `POST /interactions` (per-viewer like/retweet state for a batch). These are plain Express (like auth/search/media) — order `/author` & `/interactions` before `/:tweetId`.
 - `dev` uses `ts-node-dev --transpile-only` (**no type-checking**) — always run `tsc`/`npm run build` to catch type errors before committing.
 
 ## Common commands
@@ -85,6 +86,7 @@ cd infrastructure && npx cdk synth --context env=beta   # CDK templates (no depl
 
 - **Local stays on Kafka** (host port **9094**, `PLAINTEXT_HOST`); `.env` uses `KAFKA_BROKERS=localhost:9094`. Don't break the local Kafka path when touching messaging — only the prod (SQS/SNS) branch is `NODE_ENV`-gated.
 - **`packages/shared` must be built first** — services resolve `@xcloud/shared` via the workspace symlink to its built `dist/`.
+- **New Cassandra tables only auto-create on a fresh volume.** `db/cassandra-init.cql` runs once via the `cassandra-init` container (all `CREATE TABLE IF NOT EXISTS`). On an **existing** `cassandra_data` volume, adding a table to the CQL won't apply — run it manually (`docker exec xcloud-cassandra cqlsh -e "USE xcloud; CREATE TABLE ..."`) or `docker compose down -v` to recreate. Current tables: `tweets`, `tweets_by_author`, `likes`(+`_by_user`), `retweets`(+`_by_user`), `replies_by_tweet`.
 - **CDK is pinned to `aws-cdk-lib`/`aws-cdk` 2.150.0** — newer 2.x unbundled `@aws-cdk/cloud-assembly-schema` and breaks module resolution under workspaces. Don't bump without re-verifying `cdk synth`.
 - **Beta is HTTP-only** (ALB :80, no ACM); the listener + SG ingress rules are declared in `EcsStack` (not the gateway/db/cache stacks) to avoid cross-stack dependency cycles. `enableSearch:false` on beta skips OpenSearch + search-service (~$136/mo target).
 - `SERVICE_PORTS` in `infrastructure/lib/config/constants.ts` must match each service's default `*_PORT` (health-check correctness).

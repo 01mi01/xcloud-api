@@ -74,7 +74,7 @@ function TweetCard({ tweet }: Props) {
       onClick={() => navigate(`/tweet/${tweet.tweetId}`)}
     >
       <div className={styles.avatarCol}>
-        <Avatar size={40} />
+        <Avatar size={40} src={tweet.author.avatarUrl || undefined} />
       </div>
 
       <div className={styles.content}>
@@ -86,6 +86,35 @@ function TweetCard({ tweet }: Props) {
         </div>
 
         <p className={styles.text}>{tweet.content}</p>
+
+        {tweet.mediaUrls && tweet.mediaUrls.length > 0 && (
+          <div
+            style={{
+              marginTop: 8,
+              display: "grid",
+              gap: 4,
+              gridTemplateColumns: tweet.mediaUrls.length > 1 ? "1fr 1fr" : "1fr",
+              borderRadius: 16,
+              overflow: "hidden",
+            }}
+          >
+            {tweet.mediaUrls.map((url, i) => (
+              <img
+                key={i}
+                src={url}
+                alt=""
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  width: "100%",
+                  maxHeight: 320,
+                  objectFit: "cover",
+                  borderRadius: 12,
+                  border: "1px solid var(--color-border)",
+                }}
+              />
+            ))}
+          </div>
+        )}
 
         <div className={styles.actions}>
           <button

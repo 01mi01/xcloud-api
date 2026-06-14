@@ -14,6 +14,9 @@ const FEED_MAX_LENGTH = 800;
 export const prependToFeed = async (userId: string, tweetId: string): Promise<void> => {
     const key = `${FEED_PREFIX}${userId}`;
     const pipeline = redis.pipeline();
+    // Remove any existing occurrence first so a redelivered/duplicate event (or a
+    // create+retweet of the same tweet) can't put the tweetId in the feed twice.
+    pipeline.lrem(key, 0, tweetId);
     pipeline.lpush(key, tweetId);
     pipeline.ltrim(key, 0, FEED_MAX_LENGTH - 1);
     pipeline.expire(key, FEED_TTL);

@@ -1,7 +1,7 @@
 import * as repo from "../repositories/user.repository";
 import { User } from "../models/user.model";
 import { UpdateFields } from "../repositories/user.repository";
-import { publishUserUpdated } from "../events/user.producer";
+import { publishUserUpdated, publishUserFollowed } from "../events/user.producer";
 
 export class UserNotFoundError extends Error {
     constructor(m: string) { super(m); this.name = "UserNotFoundError"; }
@@ -25,6 +25,13 @@ export const getById = async (userId: string): Promise<User> => {
     return user;
 };
 
+export const getFollowing = async (userId: string): Promise<User[]> => repo.getFollowing(userId);
+export const getFollowers = async (userId: string): Promise<User[]> => repo.getFollowers(userId);
+
+// Which of `userIds` the viewer (followerId) follows — powers follow buttons.
+export const getFollowingStatus = async (followerId: string, userIds: string[]): Promise<string[]> =>
+    repo.getFollowedSubset(followerId, userIds);
+
 export const updateProfile = async (userId: string, handle: string, fields: UpdateFields): Promise<User> => {
     await repo.upsert(userId, handle);
     const user = await repo.update(userId, fields);
@@ -41,6 +48,8 @@ export const follow = async (followerId: string, followingId: string): Promise<v
     if (already) throw new AlreadyFollowingError("Already following this user");
 
     await repo.insertFollow(followerId, followingId);
+    // Notifica al usuario seguido (notification-service consume user.followed).
+    await publishUserFollowed(followerId, followingId);
 };
 
 export const unfollow = async (followerId: string, followingId: string): Promise<void> => {

@@ -2,11 +2,21 @@ import { Request, Response } from "express";
 import { JwtPayload } from "jsonwebtoken";
 import { registerUser, loginUser, assignUserToGroup } from "../services/auth.service";
 
+// Matches the Smithy `Handle` contract (com.twitter#Handle) that user-service's
+// GetUser enforces via the SSDK. Validating here keeps registration in sync, so
+// a handle that can be created can always be fetched.
+const HANDLE_PATTERN = /^[a-zA-Z0-9_]{4,20}$/;
+
 export const register = async (req: Request, res: Response): Promise<void> => {
     const { handle, email, password } = req.body as { handle?: string; email?: string; password?: string };
 
     if (!handle || !email || !password) {
         res.status(400).json({ message: "handle, email and password are required" });
+        return;
+    }
+
+    if (!HANDLE_PATTERN.test(handle)) {
+        res.status(400).json({ message: "handle must be 4-20 characters: letters, numbers and underscore only" });
         return;
     }
 

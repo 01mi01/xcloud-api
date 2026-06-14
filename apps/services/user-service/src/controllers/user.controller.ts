@@ -13,3 +13,33 @@ export const getUserById = async (req: Request, res: Response): Promise<void> =>
         res.status(500).json({ message: "Internal server error" });
     }
 };
+
+export const getFollowing = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const users = await svc.getFollowing(req.params.userId as string);
+        res.status(200).json({ users });
+    } catch {
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+export const getFollowers = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const users = await svc.getFollowers(req.params.userId as string);
+        res.status(200).json({ users });
+    } catch {
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+export const getFollowingStatus = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const followerId = (req as Request & { user: { sub: string } }).user.sub;
+        const { userIds } = req.body as { userIds?: string[] };
+        if (!Array.isArray(userIds)) { res.status(400).json({ message: "userIds[] is required" }); return; }
+        const following = await svc.getFollowingStatus(followerId, userIds.slice(0, 200));
+        res.status(200).json({ following });
+    } catch {
+        res.status(500).json({ message: "Internal server error" });
+    }
+};

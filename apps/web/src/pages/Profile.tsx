@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as usersApi from "../api/users";
+import { getTweetsByAuthor, getLikedTweets } from "../api/tweets";
+import { hydrateTweets } from "../api/hydrate";
 import { ApiError } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import type { User, Tweet } from "../types";
@@ -16,8 +18,11 @@ function Profile() {
   const navigate = useNavigate();
   const { identity, refresh } = useAuth();
 
+  type ProfileTab = "posts" | "replies" | "media" | "likes";
+  const [activeTab, setActiveTab] = useState<ProfileTab>("posts");
   const [user, setUser] = useState<User | null>(null);
   const [tweets, setTweets] = useState<Tweet[]>([]);
+  const [likedTweets, setLikedTweets] = useState<Tweet[]>([]);
   const [loadingUser, setLoadingUser] = useState(true);
   const [loadingTweets, setLoadingTweets] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,9 +40,15 @@ function Profile() {
     setError(null);
     usersApi
       .getUser(targetHandle)
-      .then((u) => {
+      .then(async (u) => {
         setUser(u);
-        setFollowing(false);
+        // Reflect whether the viewer already follows this user.
+        if (u.handle !== identity?.handle) {
+          const status = await usersApi.getFollowingStatus([u.userId]).catch((): string[] => []);
+          setFollowing(status.includes(u.userId));
+        } else {
+          setFollowing(false);
+        }
       })
       .catch((err: unknown) => {
         if (err instanceof ApiError && err.status === 404)
@@ -49,10 +60,31 @@ function Profile() {
 
   useEffect(() => {
     if (!user) return;
+    let cancelled = false;
+    setActiveTab("posts");
     setLoadingTweets(true);
-    setTweets([]);
-    setLoadingTweets(false);
-  }, [user]);
+    // The user's own tweets (split into Posts/Replies/Media client-side) and the
+    // tweets they liked (Likes tab) — fetched together.
+    Promise.all([
+      getTweetsByAuthor(user.userId).then((raw) => hydrateTweets(raw, identity?.userId)),
+      getLikedTweets(user.userId).then((raw) => hydrateTweets(raw, identity?.userId)),
+    ])
+      .then(([authored, liked]) => {
+        if (cancelled) return;
+        setTweets(authored);
+        setLikedTweets(liked);
+      })
+      .catch(() => { if (!cancelled) { setTweets([]); setLikedTweets([]); } })
+      .finally(() => { if (!cancelled) setLoadingTweets(false); });
+    return () => { cancelled = true; };
+  }, [user, identity?.userId]);
+
+  // Tweets shown for the active tab.
+  const visibleTweets =
+    activeTab === "posts"   ? tweets.filter((t) => !t.replyToTweetId)
+    : activeTab === "replies" ? tweets.filter((t) => t.replyToTweetId)
+    : activeTab === "media"   ? tweets.filter((t) => t.mediaUrls.length > 0)
+    : likedTweets;
 
   const handleFollow = async () => {
     if (!user) return;
@@ -136,7 +168,7 @@ function Profile() {
 
         {/* Avatar row */}
         <div className={styles.avatarRow}>
-          <Avatar size={80} />
+          <Avatar size={80} src={user.avatarUrl || undefined} />
           {isOwnProfile ? (
             <button
               className={styles.editBtn}
@@ -181,11 +213,17 @@ function Profile() {
             </span>
           </div>
           <div className={styles.followStats}>
-            <span>
+            <span
+              onClick={() => navigate(`/profile/${user.handle}/following`)}
+              style={{ cursor: "pointer" }}
+            >
               <strong>{user.followingCount.toLocaleString()}</strong>{" "}
               <span className={styles.statLabel}>Following</span>
             </span>
-            <span>
+            <span
+              onClick={() => navigate(`/profile/${user.handle}/followers`)}
+              style={{ cursor: "pointer" }}
+            >
               <strong>{user.followersCount.toLocaleString()}</strong>{" "}
               <span className={styles.statLabel}>Followers</span>
             </span>
@@ -194,18 +232,28 @@ function Profile() {
 
         {/* Tabs */}
         <div className={styles.tabs}>
-          <button className={`${styles.tab} ${styles.tabActive}`}>Posts</button>
-          <button className={styles.tab}>Replies</button>
-          <button className={styles.tab}>Media</button>
-          <button className={styles.tab}>Likes</button>
+          {(["posts", "replies", "media", "likes"] as const).map((tab) => (
+            <button
+              key={tab}
+              className={`${styles.tab} ${activeTab === tab ? styles.tabActive : ""}`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </button>
+          ))}
         </div>
 
-        {/* Tweet list */}
-        {loadingTweets && <p className={styles.msg}>Loading posts…</p>}
-        {!loadingTweets && tweets.length === 0 && (
-          <p className={styles.msg}>No posts yet.</p>
+        {/* Tweet list (per active tab) */}
+        {loadingTweets && <p className={styles.msg}>Loading…</p>}
+        {!loadingTweets && visibleTweets.length === 0 && (
+          <p className={styles.msg}>
+            {activeTab === "posts"   ? "No posts yet."
+              : activeTab === "replies" ? "No replies yet."
+              : activeTab === "media"   ? "No media yet."
+              : "No likes yet."}
+          </p>
         )}
-        {tweets.map((tweet) => (
+        {visibleTweets.map((tweet) => (
           <TweetCard key={tweet.tweetId} tweet={tweet} />
         ))}
 
@@ -214,7 +262,11 @@ function Profile() {
           <EditProfileModal
             user={user}
             onClose={() => setShowEditModal(false)}
-            onSave={(updated) => setUser((u) => (u ? { ...u, ...updated } : u))}
+            onSave={(updated) => {
+              setUser((u) => (u ? { ...u, ...updated } : u));
+              // Refresh auth so the sidebar (own avatar/name) reflects the change.
+              if (isOwnProfile) refresh().catch(() => {});
+            }}
           />
         )}
       </main>

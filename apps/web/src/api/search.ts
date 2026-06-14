@@ -1,4 +1,5 @@
 import { apiFetch } from "./client";
+import { getTweet } from "./tweets";
 import type { RawTweet, User } from "../types";
 
 // search-service is NOT in the Smithy model, so (like auth/notifications) it is
@@ -28,25 +29,19 @@ interface SearchResponse<T> {
 }
 
 /**
- * Full-text tweet search. The search index stores text + ids only (not live
- * like/retweet counts), so those default to 0 here; the author profile is
- * joined client-side via hydrateTweets.
+ * Full-text tweet search. The search index stores text + ids only, so each hit
+ * is hydrated via tweet-service GET /v1/tweets/:id to get live counts + media.
+ * Tweets deleted since indexing 404 and are dropped from the results.
  */
 export async function searchTweets(q: string): Promise<RawTweet[]> {
   const res = await apiFetch<SearchResponse<TweetSearchHit>>("/v1/search", {
     auth: false,
     query: { q, type: "tweets" },
   });
-  return res.results.map((r) => ({
-    tweetId: r.tweetId,
-    content: r.content,
-    authorId: r.authorId,
-    mediaUrls: [],
-    likesCount: 0,
-    retweetCount: 0,
-    createdAt: r.createdAt,
-    replyToTweetId: null,
-  }));
+  const full = await Promise.all(
+    res.results.map((r) => getTweet(r.tweetId).then((x) => x.tweet).catch(() => null)),
+  );
+  return full.filter((t): t is RawTweet => t !== null);
 }
 
 /** User search by handle / display name / bio. */

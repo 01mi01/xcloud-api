@@ -31,6 +31,46 @@ export const getTweet = async (req: Request, res: Response): Promise<void> => {
     }
 };
 
+export const getTweetsByAuthor = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+        const tweets = await svc.getTweetsByAuthor((req.params.authorId as string), limit);
+        res.status(200).json({ tweets });
+    } catch {
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+export const getReplies = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const tweets = await svc.getReplies((req.params.tweetId as string));
+        res.status(200).json({ tweets });
+    } catch {
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+export const getLikedTweets = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit as string) || 50, 50);
+        const tweets = await svc.getLikedTweets((req.params.userId as string), limit);
+        res.status(200).json({ tweets });
+    } catch {
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+export const getInteractions = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { tweetIds } = req.body as { tweetIds?: string[] };
+        if (!Array.isArray(tweetIds)) { res.status(400).json({ message: "tweetIds[] is required" }); return; }
+        const result = await svc.getInteractions((req as AuthRequest).user.sub, tweetIds.slice(0, 100));
+        res.status(200).json(result);
+    } catch {
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
 export const deleteTweet = async (req: Request, res: Response): Promise<void> => {
     try {
         await svc.deleteTweet((req.params.tweetId as string), (req as AuthRequest).user.sub);

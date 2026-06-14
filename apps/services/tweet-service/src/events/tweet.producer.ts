@@ -16,10 +16,11 @@ export const publishTweetCreated = async (tweet: Tweet): Promise<void> => {
         await publisher.publish(
             "tweet.created",
             {
-                tweetId:   tweet.tweetId,
-                authorId:  tweet.authorId,
-                content:   tweet.content,
-                createdAt: tweet.createdAt,
+                tweetId:        tweet.tweetId,
+                authorId:       tweet.authorId,
+                content:        tweet.content,
+                replyToTweetId: tweet.replyToTweetId,
+                createdAt:      tweet.createdAt,
             },
             {
                 key:             tweet.authorId ?? undefined,

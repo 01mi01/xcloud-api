@@ -1,5 +1,8 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import type { User } from "../../types";
+import * as usersApi from "../../api/users";
+import { uploadImage } from "../../api/media";
+import { ApiError } from "../../api/client";
 import Avatar from "../common/Avatar";
 import styles from "./EditProfileModal.module.css";
 
@@ -14,20 +17,50 @@ function EditProfileModal({ user, onClose, onSave }: Props) {
   const [bio, setBio] = useState(user.bio ?? "");
   const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl ?? "");
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const nameOver = displayName.length > 50;
   const bioOver = bio.length > 160;
   const invalid = nameOver || bioOver || displayName.trim().length === 0;
 
+  const handleAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError(null);
+    setUploading(true);
+    try {
+      // media-service returns a relative URL; make it absolute so it passes the
+      // user-service avatarUrl validation (^https?://) and renders as <img>.
+      const path = await uploadImage(file);
+      setAvatarUrl(path.startsWith("http") ? path : `${window.location.origin}${path}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Avatar upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleSave = async () => {
-    if (invalid || saving) return;
+    if (invalid || saving || uploading) return;
     setSaving(true);
-    // In production this calls PUT /v1/users/me
-    // For now we just pass the updated fields up to the parent
-    await new Promise((r) => setTimeout(r, 400));
-    onSave({ displayName, bio, avatarUrl });
-    setSaving(false);
-    onClose();
+    setError(null);
+    try {
+      // Persist via PUT /v1/users/me (only send avatarUrl if set).
+      const updated = await usersApi.updateMe({
+        displayName,
+        bio,
+        ...(avatarUrl ? { avatarUrl } : {}),
+      });
+      onSave(updated);
+      onClose();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not save profile.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Close when clicking the backdrop
@@ -67,16 +100,24 @@ function EditProfileModal({ user, onClose, onSave }: Props) {
           </button>
         </div>
 
-        {/* Avatar with camera overlay */}
+        {/* Avatar with camera overlay → uploads a new profile picture */}
         <div className={styles.avatarWrapper}>
-          <Avatar size={80} />
-          <button className={styles.avatarOverlay}>
+          <Avatar size={80} src={avatarUrl || undefined} />
+          <button
+            className={styles.avatarOverlay}
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            title="Upload a profile picture"
+          >
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={2}>
               <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
               <circle cx="12" cy="13" r="4" />
             </svg>
           </button>
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={handleAvatarFile} />
         </div>
+        {uploading && <p style={{ textAlign: "center", color: "var(--color-text-secondary)", fontSize: 14, margin: "4px 0 0" }}>Uploading…</p>}
+        {error && <p style={{ textAlign: "center", color: "#f4212e", fontSize: 14, margin: "4px 0 0" }}>{error}</p>}
 
         {/* Form fields */}
         <div className={styles.form}>

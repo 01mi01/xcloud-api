@@ -2,10 +2,23 @@ import styles from "./Avatar.module.css";
 
 interface Props {
   size?: number;
+  /** Profile picture URL; falls back to the grey placeholder when absent. */
+  src?: string | null;
 }
 
-// Generic grey avatar — shown when user has no profile picture
-function Avatar({ size = 40 }: Props) {
+function Avatar({ size = 40, src }: Props) {
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt=""
+        className={styles.wrapper}
+        style={{ width: size, height: size, objectFit: "cover", borderRadius: "50%" }}
+      />
+    );
+  }
+
+  // Generic grey avatar — shown when user has no profile picture
   return (
     <div className={styles.wrapper} style={{ width: size, height: size }}>
       <svg viewBox="0 0 24 24" fill="none" className={styles.icon}>

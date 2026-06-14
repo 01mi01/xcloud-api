@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Tweet, RawTweet } from "../../types";
-import { mockCurrentUser } from "../../data/mockData";
+import * as tweetsApi from "../../api/tweets";
+import { ApiError } from "../../api/client";
 import Avatar from "../common/Avatar";
 import styles from "./ReplyModal.module.css";
 
@@ -15,6 +16,7 @@ interface Props {
 function ReplyModal({ tweet, onClose, onReply }: Props) {
   const [content, setContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const remaining = MAX_CHARS - content.length;
   const isEmpty = content.trim().length === 0;
@@ -23,24 +25,20 @@ function ReplyModal({ tweet, onClose, onReply }: Props) {
   const handleReply = async () => {
     if (isEmpty || isOver || submitting) return;
     setSubmitting(true);
-
-    await new Promise((r) => setTimeout(r, 300));
-
-    const newReply: RawTweet = {
-      tweetId: `reply-${Date.now()}`,
-      content,
-      authorId: mockCurrentUser.userId,
-      mediaUrls: [],
-      likesCount: 0,
-      retweetCount: 0,
-      repliesCount: 0,
-      createdAt: new Date().toISOString(),
-      replyToTweetId: tweet.tweetId,
-    };
-
-    onReply(newReply);
-    setSubmitting(false);
-    onClose();
+    setError(null);
+    try {
+      // Persist the reply as a tweet with replyToTweetId.
+      const { tweet: reply } = await tweetsApi.createTweet({
+        content,
+        replyToTweetId: tweet.tweetId,
+      });
+      onReply(reply);
+      onClose();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to reply.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -91,6 +89,7 @@ function ReplyModal({ tweet, onClose, onReply }: Props) {
               rows={3}
               autoFocus
             />
+            {error && <p style={{ color: "#f4212e", fontSize: 14, margin: "4px 0 0" }}>{error}</p>}
             <div className={styles.footer}>
               <div />
               <div className={styles.right2}>

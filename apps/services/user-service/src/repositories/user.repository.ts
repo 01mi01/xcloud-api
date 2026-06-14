@@ -53,6 +53,32 @@ export const update = async (userId: string, fields: UpdateFields): Promise<User
     return findById(userId);
 };
 
+// Users that `userId` follows.
+export const getFollowing = async (userId: string, limit = 100): Promise<User[]> => {
+    const { rows } = await pool.query(
+        `${WITH_COUNTS}
+         JOIN follows f ON f.following_id = u.user_id
+         WHERE f.follower_id = $1
+         ORDER BY u.handle
+         LIMIT $2`,
+        [userId, limit]
+    );
+    return rows.map(fromRow);
+};
+
+// Users that follow `userId`.
+export const getFollowers = async (userId: string, limit = 100): Promise<User[]> => {
+    const { rows } = await pool.query(
+        `${WITH_COUNTS}
+         JOIN follows f ON f.follower_id = u.user_id
+         WHERE f.following_id = $1
+         ORDER BY u.handle
+         LIMIT $2`,
+        [userId, limit]
+    );
+    return rows.map(fromRow);
+};
+
 export const insertFollow = async (followerId: string, followingId: string): Promise<void> => {
     await pool.query(
         `INSERT INTO follows (follower_id, following_id) VALUES ($1, $2)`,
@@ -66,6 +92,16 @@ export const deleteFollow = async (followerId: string, followingId: string): Pro
         [followerId, followingId]
     );
     return (rowCount ?? 0) > 0;
+};
+
+// Of `candidateIds`, which ones does `followerId` already follow.
+export const getFollowedSubset = async (followerId: string, candidateIds: string[]): Promise<string[]> => {
+    if (candidateIds.length === 0) return [];
+    const { rows } = await pool.query(
+        `SELECT following_id FROM follows WHERE follower_id = $1 AND following_id = ANY($2)`,
+        [followerId, candidateIds]
+    );
+    return rows.map((r: { following_id: string }) => r.following_id);
 };
 
 export const followExists = async (followerId: string, followingId: string): Promise<boolean> => {

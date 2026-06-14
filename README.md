@@ -20,22 +20,24 @@ Phd. Jhesser Guzman
 
 ## Arquitectura
 
-El sistema está compuesto por **7 microservicios** independientes, cada uno con su propia responsabilidad:
+El sistema está compuesto por **8 microservicios** independientes, cada uno con su propia responsabilidad:
 
 | Servicio | Puerto | Descripción | Base de datos |
 |---|---|---|---|
-| Auth Service | 3000 | Registro, login, JWT | PostgreSQL (`auth_users`) |
+| Auth Service | 3000 | Registro (valida handle), login, JWT | PostgreSQL (`auth_users`) |
 | User Service | 3001 | Perfiles, follow/unfollow | PostgreSQL (`users`, `follows`) |
-| Tweet Service | 3002 | CRUD tweets, likes | Cassandra (`tweets`, `likes`) |
+| Tweet Service | 3002 | CRUD tweets, likes, retweets, replies, estado por usuario | Cassandra (`tweets`, `likes`, `retweets`, `replies_by_tweet`) |
 | Feed Service | 3003 | Timeline personalizado | Redis (cache) + Cassandra (fallback) |
-| Fan-out Service | — | Distribuye tweets a feeds | Redis (escritura) + PostgreSQL (lectura) |
-| Notification Service | 3004 | Notificaciones de interacciones | PostgreSQL (`notifications`) |
-| Search Service | 3005 | Búsqueda full-text | Elasticsearch (`tweets` index) |
+| Fan-out Service | — | Distribuye tweets/retweets a feeds | Redis (escritura) + PostgreSQL (lectura) |
+| Notification Service | 3004 | Notificaciones (likes/retweets/follows) + push **WebSocket** | PostgreSQL (`notifications`) |
+| Search Service | 3005 | Búsqueda full-text de tweets **y usuarios** | Elasticsearch (`tweets`, `users`) |
+| Media Service | 3006 | Subida de imágenes (disco local / S3) | disco local (dev) / S3 (prod) |
 
 ### Comunicación entre servicios
 
 - **REST** para APIs públicas (cliente → servicio)
-- **Kafka** para comunicación asíncrona entre servicios (eventos)
+- **WebSocket** para notificaciones en tiempo real (notification-service → SPA)
+- **Kafka** (local) / **SQS+SNS** (prod) para comunicación asíncrona entre servicios (eventos)
 - **HTTP interno** para hidratación de datos (Feed → Tweet Service)
 
 ### Topics de Kafka
@@ -45,7 +47,7 @@ El sistema está compuesto por **7 microservicios** independientes, cada uno con
 | `tweet.created` | Tweet Service | Fan-out Service, Search Service |
 | `tweet.liked` | Tweet Service | Notification Service |
 | `tweet.retweeted` | Tweet Service | Fan-out Service, Notification Service |
-| `user.followed` | User Service (pendiente) | Notification Service |
+| `user.followed` | User Service | Notification Service |
 | `user.created` | Auth Service | Search Service (índice de usuarios) |
 | `user.updated` | User Service | Search Service (índice de usuarios) |
 
@@ -189,12 +191,17 @@ Stop-Service postgresql-x64-17
 | POST | `/v1/auth/login` | No | Login, obtener JWT |
 | GET | `/v1/auth/me` | Bearer | Datos del usuario actual |
 
+> El `handle` se valida en el registro contra la misma regla del contrato Smithy (`^[a-zA-Z0-9_]{4,20}$` — letras, números y guion bajo). Así, un handle que se puede crear siempre se puede resolver vía `GET /v1/users/:handle` (servido por el SSDK, que aplica la misma restricción).
+
 ### User Service (puerto 3001)
 
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
 | GET | `/v1/users/:handle` | No | Obtener perfil por handle |
 | GET | `/v1/users/by-id/:userId` | No | Obtener perfil por userId (usado por hidratación de tweets) |
+| GET | `/v1/users/:userId/following` | No | Listar a quién sigue el usuario |
+| GET | `/v1/users/:userId/followers` | No | Listar quién sigue al usuario |
+| POST | `/v1/users/following-status` | Bearer | ¿Cuáles de un lote de userIds sigue el viewer? (botones follow) |
 | PUT | `/v1/users/me` | Bearer | Actualizar perfil propio |
 | POST | `/v1/users/:userId/follow` | Bearer | Seguir a un usuario |
 | DELETE | `/v1/users/:userId/follow` | Bearer | Dejar de seguir |
@@ -208,12 +215,16 @@ Stop-Service postgresql-x64-17
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
 | POST | `/v1/tweets` | Bearer | Publicar tweet |
+| GET | `/v1/tweets/author/:authorId` | No | Listar tweets de un usuario (perfil) |
+| GET | `/v1/tweets/liked/:userId` | No | Listar tweets que un usuario dio like (pestaña Likes) |
+| GET | `/v1/tweets/:tweetId/replies` | No | Listar respuestas de un tweet |
 | GET | `/v1/tweets/:tweetId` | No | Obtener tweet por ID |
 | DELETE | `/v1/tweets/:tweetId` | Bearer | Eliminar tweet propio |
 | POST | `/v1/tweets/:tweetId/like` | Bearer | Dar like |
 | DELETE | `/v1/tweets/:tweetId/like` | Bearer | Quitar like |
 | POST | `/v1/tweets/:tweetId/retweet` | Bearer | Retuitear |
 | DELETE | `/v1/tweets/:tweetId/retweet` | Bearer | Quitar retweet |
+| POST | `/v1/tweets/interactions` | Bearer | Estado like/retweet del usuario para un lote de tweetIds |
 
 ### Feed Service (puerto 3003)
 
@@ -227,6 +238,18 @@ Stop-Service postgresql-x64-17
 |---|---|---|---|
 | GET | `/v1/notifications` | Bearer | Listar notificaciones |
 | PUT | `/v1/notifications/:id/read` | Bearer | Marcar como leída |
+| WS | `/v1/notifications/ws?token=<jwt>` | JWT (query) | Notificaciones en tiempo real (push) |
+
+> El WebSocket entrega likes/retweets/follows en tiempo real; el JWT se valida en el handshake (`?token=`). El SPA muestra un badge de no leídas y actualiza la lista al vuelo.
+
+### Media Service (puerto 3006)
+
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| POST | `/v1/media` | Bearer | Subir imagen (multipart, campo `file`); devuelve `{ url }` |
+| GET | `/v1/media/files/:name` | No | Servir imagen (solo dev; en prod es S3/CloudFront) |
+
+> Almacenamiento híbrido: disco local en dev (`uploads/`), S3 en producción (`NODE_ENV`). Acepta PNG/JPEG/GIF/WebP hasta 5 MB. El composer del SPA sube la imagen y guarda la URL en `mediaUrls` del tweet.
 
 ### Search Service (puerto 3005)
 
@@ -443,7 +466,7 @@ xcloud-api/
 │   └── services/
 │       ├── auth-service/         # 3000   user-service/ 3001   tweet-service/ 3002
 │       ├── feed-service/         # 3003   notification-service/ 3004   search-service/ 3005
-│       ├── media-service/        # 3006 (stub)
+│       ├── media-service/        # 3006 (subida de imágenes: disco local / S3)
 │       └── fanout-service/       # worker + /health 3007
 ├── packages/
 │   ├── shared/                   # @xcloud/shared (auth, mensajería Kafka/SQS, utils)

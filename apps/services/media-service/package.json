@@ -8,13 +8,17 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "test": "echo \"no tests yet\" && exit 0"
   },
-  "description": "Media Service — stub created during cloud migration (uploads not yet implemented)",
+  "description": "Media Service — image uploads (local disk in dev, S3 in prod)",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.835.0",
+    "@xcloud/shared": "*",
     "dotenv": "^17.4.2",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "multer": "^2.0.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
+    "@types/multer": "^1.4.12",
     "@types/node": "^22.0.0",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.8.3"

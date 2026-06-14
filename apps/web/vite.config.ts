@@ -11,6 +11,7 @@ const SERVICE_PORTS: Record<string, number> = {
   feed:          3003,
   notifications: 3004,
   search:        3005,
+  media:         3006,
 }
 
 const proxy = Object.fromEntries(
@@ -19,6 +20,9 @@ const proxy = Object.fromEntries(
     {
       target:       `http://localhost:${port}`,
       changeOrigin: true,
+      // ws:true proxies the notification-service WebSocket (/api/v1/notifications/ws);
+      // harmless for the HTTP-only services.
+      ws:           true,
       rewrite:      (path: string) => path.replace(/^\/api/, ''),
     },
   ]),

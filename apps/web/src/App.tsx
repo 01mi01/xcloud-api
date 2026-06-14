@@ -72,6 +72,22 @@ function App() {
         }
       />
       <Route
+        path="/profile/:handle/following"
+        element={
+          <ProtectedRoute>
+            <Following />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile/:handle/followers"
+        element={
+          <ProtectedRoute>
+            <Following />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/profile"
         element={
           <ProtectedRoute>

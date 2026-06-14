@@ -9,8 +9,28 @@ export interface Notification {
   createdAt: string;
 }
 
-export function listNotifications(): Promise<{ notifications: Notification[] }> {
-  return apiFetch<{ notifications: Notification[] }>("/v1/notifications");
+// Wire shape from notification-service (snake-ish camelCase from the DB row).
+interface RawNotification {
+  id: string;
+  actorUserId: string;
+  type: string;
+  refTweetId: string | null;
+  read: boolean;
+  createdAt: string;
+}
+
+export async function listNotifications(): Promise<{ notifications: Notification[] }> {
+  const res = await apiFetch<{ notifications: RawNotification[] }>("/v1/notifications");
+  return {
+    notifications: res.notifications.map((n) => ({
+      id: n.id,
+      type: n.type,
+      actorId: n.actorUserId,
+      targetId: n.refTweetId,
+      read: n.read,
+      createdAt: n.createdAt,
+    })),
+  };
 }
 
 export function markRead(id: string): Promise<void> {

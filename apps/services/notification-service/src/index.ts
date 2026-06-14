@@ -7,6 +7,7 @@ import app from "./app";
 import { startLikeConsumer } from "./consumers/like.consumer";
 import { startFollowConsumer } from "./consumers/follow.consumer";
 import { startRetweetConsumer } from "./consumers/retweet.consumer";
+import { attachWebSocketServer } from "./websocket/ws.server";
 
 const PORT = parseInt(process.env.NOTIFICATION_PORT ?? "3004");
 
@@ -31,10 +32,12 @@ const main = async (): Promise<void> => {
     };
     startConsumers();
 
-    // Start HTTP server for REST API (GET notifications, mark as read)
-    app.listen(PORT, () => {
+    // Start HTTP server for REST API (GET notifications, mark as read) and
+    // attach the WebSocket server to it for real-time push.
+    const server = app.listen(PORT, () => {
         console.log(`Notification Service running on port ${PORT}`);
     });
+    attachWebSocketServer(server);
 };
 
 main();

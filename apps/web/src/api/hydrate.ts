@@ -1,12 +1,13 @@
 import type { RawTweet, Tweet, User } from "../types";
-import { apiFetch } from "./client";
+import { apiFetch, getToken } from "./client";
+import { getInteractions } from "./tweets";
 
 /**
  * Fetch a user by `userId`. The user-service does not expose this directly
  * (it serves GET /v1/users/:handle), so we provide a graceful fallback that
  * synthesizes a minimal `User` object when the lookup is not available.
  */
-async function getUserById(userId: string): Promise<User | null> {
+export async function getUserById(userId: string): Promise<User | null> {
   try {
     return await apiFetch<User>(`/v1/users/by-id/${encodeURIComponent(userId)}`);
   } catch {
@@ -34,13 +35,23 @@ function fallbackUser(userId: string): User {
  */
 export async function hydrateTweets(raw: RawTweet[], currentUserId?: string): Promise<Tweet[]> {
   const uniqueAuthorIds = Array.from(new Set(raw.map((t) => t.authorId)));
-  const fetched = await Promise.all(uniqueAuthorIds.map((id) => getUserById(id)));
+
+  // Author profiles + the viewer's like/retweet state, fetched in parallel.
+  const [fetched, interactions] = await Promise.all([
+    Promise.all(uniqueAuthorIds.map((id) => getUserById(id))),
+    raw.length && getToken()
+      ? getInteractions(raw.map((t) => t.tweetId)).catch(() => ({ liked: [], retweeted: [] }))
+      : Promise.resolve({ liked: [], retweeted: [] }),
+  ]);
+
   const byId = new Map<string, User>();
   uniqueAuthorIds.forEach((id, i) => {
     byId.set(id, fetched[i] ?? fallbackUser(id));
   });
 
-  void currentUserId; // reserved for per-viewer flags once like-state endpoint exists
+  void currentUserId; // viewer is now identified by the JWT sent with getInteractions
+  const likedSet = new Set(interactions.liked);
+  const retweetedSet = new Set(interactions.retweeted);
 
   return raw.map((t) => ({
     tweetId:        t.tweetId,
@@ -52,7 +63,7 @@ export async function hydrateTweets(raw: RawTweet[], currentUserId?: string): Pr
     repliesCount:   t.repliesCount ?? 0,
     createdAt:      t.createdAt,
     replyToTweetId: t.replyToTweetId ?? null,
-    liked:          false,
-    retweeted:      false,
+    liked:          likedSet.has(t.tweetId),
+    retweeted:      retweetedSet.has(t.tweetId),
   }));
 }
