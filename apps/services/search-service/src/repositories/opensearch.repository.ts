@@ -22,7 +22,7 @@ export interface UserDocument {
  * Ensure the tweets index exists with proper mapping.
  */
 export const ensureIndex = async (): Promise<void> => {
-    const exists = await esClient.indices.exists({ index: TWEET_INDEX });
+    const { body: exists } = await esClient.indices.exists({ index: TWEET_INDEX });
     if (!exists) {
         await esClient.indices.create({
             index: TWEET_INDEX,
@@ -45,7 +45,7 @@ export const ensureIndex = async (): Promise<void> => {
  * Ensure the users index exists with proper mapping.
  */
 export const ensureUserIndex = async (): Promise<void> => {
-    const exists = await esClient.indices.exists({ index: USER_INDEX });
+    const { body: exists } = await esClient.indices.exists({ index: USER_INDEX });
     if (!exists) {
         await esClient.indices.create({
             index: USER_INDEX,
@@ -112,10 +112,10 @@ export const searchTweets = async (
         },
     });
 
-    const hits = response.hits.hits;
-    const total = typeof response.hits.total === "number"
-        ? response.hits.total
-        : response.hits.total?.value ?? 0;
+    const hits = response.body.hits.hits;
+    const total = typeof response.body.hits.total === "number"
+        ? response.body.hits.total
+        : response.body.hits.total?.value ?? 0;
 
     const results: TweetDocument[] = hits.map((hit: { _source?: unknown }) => hit._source as TweetDocument);
 
@@ -147,10 +147,10 @@ export const searchUsers = async (
         },
     });
 
-    const hits = response.hits.hits;
-    const total = typeof response.hits.total === "number"
-        ? response.hits.total
-        : response.hits.total?.value ?? 0;
+    const hits = response.body.hits.hits;
+    const total = typeof response.body.hits.total === "number"
+        ? response.body.hits.total
+        : response.body.hits.total?.value ?? 0;
 
     const results: UserDocument[] = hits.map((hit: { _source?: unknown }) => hit._source as UserDocument);
 

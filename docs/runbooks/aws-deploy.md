@@ -12,14 +12,17 @@ functional, test, and tear it down. Targets the `personal` AWS profile.
 > feature work; redeploy to verify cloud-specific behaviour.
 
 ## What beta includes / excludes
-- **Includes:** auth, user, tweet, feed, fanout, notification, media (8 services
-  minus search), ALB (HTTP :80), RDS PostgreSQL, ElastiCache Redis, Amazon
-  Keyspaces, SQS/SNS, S3, and the **SPA on CloudFront + S3** (the `cdn` stack).
-- **Excludes:** OpenSearch + **search-service** (`enableSearch:false` to save
-  ~$25/mo) — so **user/tweet search won't work in beta**. To enable it: flip
-  `enableSearch:true` in `infrastructure/lib/config/environments.ts` and redeploy
-  the `search` + `ecs` stacks (the code is all there). Note search only indexes
-  events that arrive *after* it's live — no backfill of existing data.
+- **Includes:** auth, user, tweet, feed, fanout, notification, media, **search**
+  (all 8 services), ALB (HTTP :80), RDS PostgreSQL, ElastiCache Redis, Amazon
+  Keyspaces, **OpenSearch** (`t3.small.search`), SQS/SNS, S3, and the **SPA on
+  CloudFront + S3** (the `cdn` stack).
+- **Search is now ON** (`enableSearch:true`, ~$25/mo for the OpenSearch node). It
+  indexes tweets (`tweet.created`) and users (`user.created`/`user.updated`) as
+  those events arrive — there's **no backfill**, so anything created *before*
+  the search stack went live won't be searchable until it's re-created/updated.
+  To turn it back off (save the $25/mo), set `enableSearch:false` in
+  `infrastructure/lib/config/environments.ts` and redeploy `ecs` (the `search`
+  stack then isn't created). See "OpenSearch / search (SigV4)" below.
 
 ## Prerequisites
 - AWS CLI configured with the `personal` profile (`aws configure --profile personal`).
@@ -123,6 +126,48 @@ own Cassandra client), gated to `NODE_ENV==='production'` so local stays as-is:
   validated. SigV4 auth via `aws-sigv4-auth-cassandra-plugin` (task IAM role
   in-cluster; your AWS creds for the bootstrap).
 
+## OpenSearch / search (SigV4)
+search-service connects to the AWS OpenSearch domain with **SigV4-signed**
+requests, not the elastic client. Key points (all in
+`apps/services/search-service/src/config/elasticsearch.config.ts`):
+- Uses **`@opensearch-project/opensearch`** + `AwsSigv4Signer` +
+  `@aws-sdk/credential-provider-node`, `NODE_ENV`-gated: prod signs with the
+  ECS **task role** creds (`service: "es"`, region from `AWS_REGION`, host from
+  `OPENSEARCH_ENDPOINT`); local hits the plain ES container over HTTP.
+- We **dropped `@elastic/elasticsearch`**: its v8 client runs a "product check"
+  on the first request and **throws against an OpenSearch domain** (it isn't
+  Elasticsearch). The OpenSearch client has no such check and still works with
+  the local ES 8 container for the ops we use.
+- The OpenSearch client **wraps responses in `.body`** — the repository reads
+  `response.body.hits.*` and `{ body: exists } = indices.exists(...)`.
+- The task role already has `es:ESHttpGet/Post/Put/Delete` on the domain (ecs
+  stack), and the domain access policy allows any principal in the account. The
+  messaging stack always creates the `tweetIndex` / `userCreated` / `userUpdated`
+  queues + the `tweet.created` SNS fan-out, so events flow as soon as the service
+  is up. **No backfill** — only events after go-live are indexed.
+- **The VPC domain has its own SG with no default ingress** — the ecs stack adds a
+  `CfnSecurityGroupIngress` (`OpenSearchIngress-search`) letting the search-service
+  tasks reach it on 443. Without it the service can't connect (and startup used to
+  hang). search-service `index.ts` also **starts the HTTP server first**, then
+  inits indices/consumers in the background, so the `/health` check passes even if
+  OpenSearch is briefly unreachable (avoids the ECS deployment circuit breaker).
+- **Gotchas hit on first deploy (fixed):** (1) OpenSearch single-node domains need
+  **exactly one subnet** — the search stack pins `vpcSubnets` to `privateSubnets[0]`
+  (selecting by subnet *type* returns one-per-AZ and fails with "specify exactly one
+  subnet"). (2) `search-service` is now in the **default `build-push-images.sh`
+  list**, so "build all" pushes its image (a missing `:latest` → circuit breaker).
+  (3) **403 on startup** (`Failed to create search indices: Response Error`): the
+  task role granted only `ESHttpGet/Post/Put/Delete` but `indices.exists()` does a
+  **HEAD** → now grants `es:ESHttp*`. And the domain access policy had a dead
+  `aws:PrincipalOrgID: '*'` condition (`StringEquals` is literal, not a wildcard, and
+  a standalone account has no org id) → removed; it's a plain `es:ESHttp*` allow,
+  reachability already locked down by the VPC + SG. After a code/image change, the
+  task only re-runs `ensureIndex` on **restart** — `aws ecs update-service
+  --force-new-deployment` (the `:latest` tag doesn't change the CFN task def).
+- To verify after deploy: `curl "http://<alb>/v1/search?q=<term>&type=tweets"`
+  (or `type=users`) after creating a tweet/user; check
+  `aws logs tail /xcloud/search-service` for `Indexing tweet …` lines.
+
 ## RDS PostgreSQL — SSL required
 `rds.force_ssl=1`, so **every** PG client (auth/user/notification/feed/fanout)
 sets `ssl: { rejectUnauthorized: false }` in prod (CA not in Node's bundle;
@@ -150,8 +195,8 @@ publishes → fanout never runs → feed stays empty.
 ## Other things to watch
 - **RDS ad-hoc SQL:** private subnets — use SSM port-forwarding or a bastion for
   `psql`; the services handle their own schema.
-- **search-service (gamma/prod):** OpenSearch client has no SigV4 signing wired —
-  needs it before connecting to a real OpenSearch domain.
+- **search-service:** OpenSearch client is SigV4-signed (see "OpenSearch /
+  search" above) — works against a real OpenSearch domain on beta/gamma/prod.
 - **Redis:** ElastiCache has no transit encryption here, so the plain client
   works; enable `tls:{}` in the redis config if you turn encryption on.
 - **`@aws-cdk/asset-awscli-v1`:** pinned in `infrastructure` because CDK 2.150

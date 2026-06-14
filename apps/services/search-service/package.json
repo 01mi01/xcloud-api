@@ -10,7 +10,8 @@
   },
   "description": "Search Service — indexes tweets in Elasticsearch, serves full-text search",
   "dependencies": {
-    "@elastic/elasticsearch": "^8.13.0",
+    "@aws-sdk/credential-provider-node": "^3.658.0",
+    "@opensearch-project/opensearch": "^2.13.0",
     "@xcloud/shared": "*",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",

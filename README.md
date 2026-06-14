@@ -413,7 +413,7 @@ cd infrastructure
 npx cdk synth --context env=beta
 ```
 
-Beta usa `enableSearch=false`, 1 NAT, 1 task por servicio (~$136/mes). Ver `docs/adr/` para las decisiones (SQS sobre MSK, ECS sobre EKS).
+Beta usa `enableSearch=true` (OpenSearch `t3.small.search`, ~$25/mes extra), 1 NAT, 1 task por servicio. Ver `docs/adr/` para las decisiones (SQS sobre MSK, ECS sobre EKS).
 
 ### Deploy y teardown de beta (scripts)
 
@@ -443,8 +443,14 @@ porque RDS está en subredes privadas); **Cassandra (Keyspaces)** se crea con
 y enruta `/api/*` al ALB como segundo origen (una CloudFront Function quita el
 prefijo `/api`) — así las llamadas del SPA son same-origin (sin CORS ni
 mixed-content). Los archivos se suben por CLI con `./deploy-web.sh` (no con
-`BucketDeployment`). Beta tiene `enableSearch:false`, así que la búsqueda no está
-disponible ahí.
+`BucketDeployment`).
+
+**Búsqueda en AWS:** beta tiene `enableSearch:true`, así que la búsqueda full-text
+sí funciona. search-service usa el cliente `@opensearch-project/opensearch` con
+firma **SigV4** (rol de la task IAM) en producción — se cambió desde
+`@elastic/elasticsearch` porque su cliente v8 rechaza un dominio OpenSearch. Solo
+indexa eventos posteriores a su despliegue (no hay backfill). Detalle en
+[docs/runbooks/aws-deploy.md](docs/runbooks/aws-deploy.md).
 
 `status-beta.sh` no cambia nada: lista los stacks beta y cuenta los recursos
 "always-on" facturables (NAT Gateway, tasks Fargate, RDS, ALB, ElastiCache) y

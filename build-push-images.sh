@@ -29,12 +29,12 @@ ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
 REGION="$(aws configure get region || true)"; REGION="${REGION:-${AWS_REGION:-us-east-1}}"
 ECR="${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com"
 
-# Beta services (search-service excluded — enableSearch:false on beta).
+# All 8 services (search-service included — enableSearch:true on beta).
 # Override a subset with the SERVICES env var, e.g. SERVICES="tweet-service feed-service".
 if [ -n "${SERVICES:-}" ]; then
   read -r -a SERVICES <<< "$SERVICES"
 else
-  SERVICES=(auth-service user-service tweet-service feed-service notification-service media-service fanout-service)
+  SERVICES=(auth-service user-service tweet-service feed-service notification-service media-service fanout-service search-service)
 fi
 
 echo "=========================================================="

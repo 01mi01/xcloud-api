@@ -269,7 +269,7 @@ export class EcsStack extends cdk.Stack {
 
     // ── search-service (only when search is enabled) ───────────────────
     if (search) {
-      new MicroserviceConstruct(this, 'SearchService', {
+      const searchSvc = new MicroserviceConstruct(this, 'SearchService', {
         cluster,
         serviceName:         'search-service',
         containerPort:       SERVICE_PORTS['search-service'],
@@ -286,11 +286,24 @@ export class EcsStack extends cdk.Stack {
         taskPolicies: [
           ...sqsAccess([sqs.tweetIndex, sqs.userCreated, sqs.userUpdated]),
           new iam.PolicyStatement({
-            actions:   ['es:ESHttpGet', 'es:ESHttpPost', 'es:ESHttpPut', 'es:ESHttpDelete'],
+            // ESHttp* (not the 4 verbs) so HEAD is included — indices.exists()
+            // issues a HEAD request; without es:ESHttpHead it 403s on startup.
+            actions:   ['es:ESHttp*'],
             resources: [`${search.domain.domainArn}/*`],
           }),
         ],
         desiredCount: envConfig.taskCount,
+      });
+      // The OpenSearch domain runs in the VPC behind its own SG (no ingress by
+      // default). Allow the search-service tasks to reach it on 443 (enforceHttps).
+      // Declared here (CfnSecurityGroupIngress in the ecs stack) — same pattern as
+      // rds/redis ingress — to avoid a search<->ecs cross-stack dependency cycle.
+      new ec2.CfnSecurityGroupIngress(this, 'OpenSearchIngress-search', {
+        groupId:               search.domain.connections.securityGroups[0].securityGroupId,
+        ipProtocol:            'tcp',
+        fromPort:              443,
+        toPort:                443,
+        sourceSecurityGroupId: searchSvc.service.connections.securityGroups[0].securityGroupId,
       });
     }
   }
