@@ -55,16 +55,22 @@ echo "=========================================================="
 read -r -p "Deploy to THIS account/region? (yes/no) " ANSWER
 [ "$ANSWER" = "yes" ] || { echo "Aborted."; exit 1; }
 
+# --- 3. Build + push service images to ECR ---------------------------------
+# The ECS tasks pull pre-built images from ECR; build/push them first (linux/amd64).
+echo ""
+echo "==> Building and pushing service images to ECR..."
+IMAGES_CONFIRMED=1 "$ROOT/build-push-images.sh" "$PROFILE"
+
 cd "$INFRA"
 
-# --- 3. Bootstrap (once per account+region) --------------------------------
+# --- 4. Bootstrap CDK (once per account+region) ----------------------------
 if ! aws cloudformation describe-stacks --stack-name CDKToolkit --region "$REGION" >/dev/null 2>&1; then
   echo ""
   echo "==> CDK not bootstrapped in $ACCOUNT/$REGION yet. Bootstrapping..."
   npx cdk bootstrap "aws://$ACCOUNT/$REGION"
 fi
 
-# --- 4. Deploy -------------------------------------------------------------
+# --- 5. Deploy -------------------------------------------------------------
 echo ""
 echo "==> Deploying all beta stacks..."
 npx cdk deploy --all --context env=beta --require-approval never
