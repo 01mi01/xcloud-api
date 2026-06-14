@@ -6,6 +6,7 @@ export interface Tweet {
     replyToTweetId:   string | null;
     likesCount:       number;
     retweetCount:     number;
+    repliesCount:     number;
     createdAt:        Date | string;
 }
 
@@ -17,6 +18,7 @@ export interface TweetRow {
     reply_to_tweet_id?: { toString(): string } | null;
     likes_count?:       number | null;
     retweet_count?:     number | null;
+    replies_count?:     number | null;
     created_at:         Date | string;
 }
 
@@ -26,7 +28,8 @@ export const fromRow = (row: TweetRow): Tweet => ({
     authorId:         row.author_id?.toString()         ?? null,
     mediaUrls:        row.media_urls                    ?? [],
     replyToTweetId:   row.reply_to_tweet_id?.toString() ?? null,
-    likesCount:       row.likes_count   ?? 0,
-    retweetCount:     row.retweet_count ?? 0,
+    likesCount:       row.likes_count    ?? 0,
+    retweetCount:     row.retweet_count  ?? 0,
+    repliesCount:     row.replies_count  ?? 0,
     createdAt:        row.created_at,
 });

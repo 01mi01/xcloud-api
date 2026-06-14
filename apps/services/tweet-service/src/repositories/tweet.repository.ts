@@ -28,8 +28,8 @@ export const insert = async ({ tweetId, authorId, content, mediaUrls, replyToTwe
     await client.batch([
         {
             query: `INSERT INTO tweets
-                        (tweet_id, author_id, content, media_urls, reply_to_tweet_id, likes_count, retweet_count, created_at)
-                    VALUES (?, ?, ?, ?, ?, 0, 0, ?)`,
+                        (tweet_id, author_id, content, media_urls, reply_to_tweet_id, likes_count, retweet_count, replies_count, created_at)
+                    VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?)`,
             params: [id, author, content, mediaUrls ?? [], replyToTweetId ? cassandra.types.Uuid.fromString(replyToTweetId) : null, now],
         },
         {
@@ -38,6 +38,20 @@ export const insert = async ({ tweetId, authorId, content, mediaUrls, replyToTwe
             params: [author, now, id, content],
         },
     ], { prepare: true });
+
+    // Si es un reply, incrementar replies_count en el tweet padre
+    if (replyToTweetId) {
+        const parentId = cassandra.types.Uuid.fromString(replyToTweetId);
+        const current = await client.execute(
+            "SELECT replies_count FROM tweets WHERE tweet_id = ?",
+            [parentId], { prepare: true }
+        );
+        const count = current.first()?.replies_count ?? 0;
+        await client.execute(
+            "UPDATE tweets SET replies_count = ? WHERE tweet_id = ?",
+            [count + 1, parentId], { prepare: true }
+        );
+    }
 
     const result = await client.execute(
         "SELECT * FROM tweets WHERE tweet_id = ?",
@@ -94,6 +108,17 @@ export const deleteLike = async (userId: string, tweetId: string): Promise<boole
     await client.execute("UPDATE tweets SET likes_count = ? WHERE tweet_id = ?", [Math.max(0, count - 1), tid], { prepare: true });
 
     return true;
+};
+
+export const findReplies = async (tweetId: string): Promise<Tweet[]> => {
+    const result = await client.execute(
+        "SELECT * FROM tweets WHERE reply_to_tweet_id = ? ALLOW FILTERING",
+        [cassandra.types.Uuid.fromString(tweetId)],
+        { prepare: true }
+    );
+    return result.rows
+        .map((row) => fromRow(row as unknown as TweetRow))
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 };
 
 export const likeExists = async (userId: string, tweetId: string): Promise<boolean> => {

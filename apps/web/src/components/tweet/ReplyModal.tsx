@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Tweet, RawTweet } from "../../types";
-import { mockCurrentUser } from "../../data/mockData";
+import * as tweetsApi from "../../api/tweets";
 import Avatar from "../common/Avatar";
 import styles from "./ReplyModal.module.css";
 
@@ -23,27 +23,22 @@ function ReplyModal({ tweet, onClose, onReply }: Props) {
   const handleReply = async () => {
     if (isEmpty || isOver || submitting) return;
     setSubmitting(true);
-
-    await new Promise((r) => setTimeout(r, 300));
-
-    const newReply: RawTweet = {
-      tweetId: `reply-${Date.now()}`,
-      content,
-      authorId: mockCurrentUser.userId,
-      mediaUrls: [],
-      likesCount: 0,
-      retweetCount: 0,
-      repliesCount: 0,
-      createdAt: new Date().toISOString(),
-      replyToTweetId: tweet.tweetId,
-    };
-
-    onReply(newReply);
-    setSubmitting(false);
-    onClose();
+    try {
+      const { tweet: newReply } = await tweetsApi.createTweet({
+        content,
+        replyToTweetId: tweet.tweetId,
+      });
+      onReply(newReply);
+      onClose();
+    } catch {
+      // silencioso — el usuario puede reintentar
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
     if (e.target === e.currentTarget) onClose();
   };
 
@@ -53,7 +48,7 @@ function ReplyModal({ tweet, onClose, onReply }: Props) {
 
         {/* Header */}
         <div className={styles.header}>
-          <button className={styles.closeBtn} onClick={onClose}>
+          <button className={styles.closeBtn} onClick={(e) => { e.stopPropagation(); onClose(); }}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth={2}>
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />

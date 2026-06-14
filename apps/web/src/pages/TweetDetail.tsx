@@ -1,10 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as tweetsApi from "../api/tweets";
 import { hydrateTweets } from "../api/hydrate";
 import { useAuth } from "../context/AuthContext";
 import type { Tweet } from "../types";
-import { mockCurrentUser } from "../data/mockData";
 import LeftSidebar from "../components/layout/LeftSidebar";
 import RightSidebar from "../components/layout/RightSidebar";
 import TweetCard from "../components/tweet/TweetCard";
@@ -44,6 +43,16 @@ function TweetDetail() {
   const remaining = MAX_CHARS - replyContent.length;
   const isEmpty = replyContent.trim().length === 0;
 
+  const loadReplies = useCallback(async (id: string) => {
+    try {
+      const { replies: raw } = await tweetsApi.getReplies(id);
+      const hydrated = await hydrateTweets(raw, identity?.userId);
+      setReplies(hydrated);
+    } catch {
+      setReplies([]);
+    }
+  }, [identity?.userId]);
+
   useEffect(() => {
     if (!tweetId) return;
     setLoading(true);
@@ -52,33 +61,25 @@ function TweetDetail() {
       .then(async (res) => {
         const hydrated = await hydrateTweets([res.tweet], identity?.userId);
         setTweet(hydrated[0] ?? null);
+        await loadReplies(tweetId);
       })
       .catch(() => setTweet(null))
       .finally(() => setLoading(false));
-  }, [tweetId, identity?.userId]);
+  }, [tweetId, identity?.userId, loadReplies]);
 
-  const handleReply = () => {
+  const handleReply = async () => {
     if (!tweet || isEmpty || submitting) return;
     setSubmitting(true);
-
-    // Optimistic reply — in production this calls POST /v1/tweets with replyToTweetId
-    const newReply: Tweet = {
-      tweetId: `reply-${Date.now()}`,
-      content: replyContent,
-      author: mockCurrentUser,
-      mediaUrls: [],
-      likesCount: 0,
-      retweetCount: 0,
-      repliesCount: 0,
-      createdAt: new Date().toISOString(),
-      replyToTweetId: tweet.tweetId,
-      liked: false,
-      retweeted: false,
-    };
-
-    setReplies((prev) => [newReply, ...prev]);
-    setReplyContent("");
-    setSubmitting(false);
+    try {
+      await tweetsApi.createTweet({ content: replyContent, replyToTweetId: tweet.tweetId });
+      setReplyContent("");
+      setTweet((t) => t ? { ...t, repliesCount: t.repliesCount + 1 } : t);
+      await loadReplies(tweet.tweetId);
+    } catch {
+      // silencioso
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (loading) {

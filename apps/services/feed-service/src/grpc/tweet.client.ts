@@ -14,6 +14,7 @@ export interface HydratedTweet {
     replyToTweetId: string | null;
     likesCount:     number;
     retweetCount:   number;
+    repliesCount:   number;
     createdAt:      string;
 }
 
@@ -36,5 +37,6 @@ export const getTweetsByIds = async (tweetIds: string[]): Promise<HydratedTweet[
 
     const results = await Promise.all(requests);
 
-    return results.filter((t): t is HydratedTweet => t !== null);
+    // Excluir replies del feed principal — solo tweets raíz
+    return results.filter((t): t is HydratedTweet => t !== null && t.replyToTweetId === null);
 };

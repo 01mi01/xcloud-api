@@ -65,6 +65,15 @@ export const unlikeTweet = async (req: Request, res: Response): Promise<void> =>
     }
 };
 
+export const getReplies = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const replies = await repo.findReplies(req.params.tweetId as string);
+        res.status(200).json({ replies });
+    } catch {
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
 export const getLikeStatus = async (req: Request, res: Response): Promise<void> => {
     try {
         const liked = await repo.likeExists(

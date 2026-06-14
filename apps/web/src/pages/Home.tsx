@@ -105,7 +105,17 @@ function Home() {
             {!loading &&
               !error &&
               tweets.map((tweet) => (
-                <TweetCard key={tweet.tweetId} tweet={tweet} />
+                <TweetCard
+                  key={tweet.tweetId}
+                  tweet={tweet}
+                  onDeleted={(id) => setTweets((prev) => prev.filter((t) => t.tweetId !== id))}
+                  onReplyCreated={(_parentId) => {
+                    feedApi.getFeed().then(async (res) => {
+                      const hydrated = await hydrateTweets(res.tweets, identity?.userId);
+                      setTweets(hydrated);
+                    }).catch(() => {});
+                  }}
+                />
               ))}
           </>
         )}
