@@ -45,8 +45,8 @@ export interface Tweet {
   replyToTweetId: string | null;
   liked: boolean;
   retweeted: boolean;
-  bookmarked: boolean;
-  replyToAuthorHandle: string | null;
+  bookmarked?: boolean;
+  replyToAuthorHandle?: string | null;
 }
 
 /**

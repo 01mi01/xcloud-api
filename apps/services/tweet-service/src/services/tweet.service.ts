@@ -31,6 +31,20 @@ export const createTweet = async (authorId: string, input: CreateTweetInput): Pr
         replyToTweetId: input.replyToTweetId,
     });
     await producer.publishTweetCreated(tweet);
+
+    // Si es un reply, notificar al autor del tweet padre (salvo self-reply).
+    if (input.replyToTweetId) {
+        const parent = await repo.findById(input.replyToTweetId);
+        if (parent && parent.authorId && parent.authorId !== authorId) {
+            await producer.publishTweetReplied({
+                replyTweetId:  tweet.tweetId!,
+                parentTweetId: input.replyToTweetId,
+                userId:        authorId,
+                targetUserId:  parent.authorId,
+            });
+        }
+    }
+
     return tweet;
 };
 

@@ -26,6 +26,7 @@ const SQS_QUEUE_ENV: Partial<Record<EventName, string>> = {
   'tweet.liked': 'LIKE_EVENT_QUEUE_URL',
   'user.followed': 'FOLLOW_EVENT_QUEUE_URL',
   'tweet.retweeted': 'RETWEET_EVENT_QUEUE_URL',
+  'tweet.replied': 'REPLY_EVENT_QUEUE_URL',
 };
 
 /** Production publisher: SNS for fan-out events, SQS for 1:1 events. */

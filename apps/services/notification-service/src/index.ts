@@ -7,6 +7,7 @@ import app from "./app";
 import { startLikeConsumer } from "./consumers/like.consumer";
 import { startFollowConsumer } from "./consumers/follow.consumer";
 import { startRetweetConsumer } from "./consumers/retweet.consumer";
+import { startReplyConsumer } from "./consumers/reply.consumer";
 import { attachWebSocketServer } from "./websocket/ws.server";
 
 const PORT = parseInt(process.env.NOTIFICATION_PORT ?? "3004");
@@ -17,7 +18,7 @@ const main = async (): Promise<void> => {
         try {
             // Start concurrently: in production each consumer long-polls its own
             // SQS queue (a blocking loop), so they must not be awaited sequentially.
-            await Promise.all([startLikeConsumer(), startFollowConsumer(), startRetweetConsumer()]);
+            await Promise.all([startLikeConsumer(), startFollowConsumer(), startRetweetConsumer(), startReplyConsumer()]);
             console.log("Notification Service — event consumers running");
         } catch (err) {
             if (attempt >= 5) {

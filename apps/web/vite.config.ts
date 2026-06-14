@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type ProxyOptions } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // Each backend microservice has its own port. The dev proxy below maps
@@ -13,7 +13,7 @@ const SERVICE_PORTS: Record<string, number> = {
   search:        3005,
 }
 
-const proxy = Object.fromEntries(
+const proxy: Record<string, ProxyOptions> = Object.fromEntries(
   Object.entries(SERVICE_PORTS).map(([name, port]) => [
     `/api/v1/${name}`,
     {

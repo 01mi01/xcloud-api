@@ -20,6 +20,14 @@ export interface RetweetEvent {
     timestamp:    string;
 }
 
+export interface ReplyEvent {
+    replyTweetId:  string;  // el tweet de respuesta
+    parentTweetId: string;  // el tweet al que se respondió
+    userId:        string;  // quien respondió (actor)
+    targetUserId:  string;  // autor del tweet padre (destinatario)
+    timestamp:     string;
+}
+
 /**
  * Procesa un evento de like.
  * Diseño técnico §4.3:
@@ -65,6 +73,22 @@ export const processRetweetEvent = async (event: RetweetEvent): Promise<void> =>
         event.userId,        // quien retweeteó es el actor
         "retweet",
         event.tweetId
+    );
+
+    wsPublisher.pushToUser(event.targetUserId, notification);
+};
+
+/**
+ * Procesa un evento de reply.
+ */
+export const processReplyEvent = async (event: ReplyEvent): Promise<void> => {
+    if (event.userId === event.targetUserId) return; // no notificar self-reply
+
+    const notification = await repo.insert(
+        event.targetUserId,    // el autor del tweet padre recibe la notificación
+        event.userId,          // quien respondió es el actor
+        "reply",
+        event.parentTweetId    // el tweet al que respondieron
     );
 
     wsPublisher.pushToUser(event.targetUserId, notification);

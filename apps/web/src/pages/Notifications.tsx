@@ -48,7 +48,7 @@ function NotifIcon({ type }: { type: string }) {
       </svg>
     );
   }
-  if (type === "mention") {
+  if (type === "mention" || type === "reply") {
     return (
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={2} className={styles.iconMention}>
         <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
@@ -63,6 +63,7 @@ function notifText(type: string, actorName: string, _excerpt?: string): string {
   if (type === "like") return `${actorName} liked your tweet`;
   if (type === "retweet") return `${actorName} retweeted your tweet`;
   if (type === "follow") return `${actorName} followed you`;
+  if (type === "reply") return `${actorName} replied to your tweet`;
   if (type === "mention") return `${actorName} mentioned you`;
   return `${actorName} interacted with you`;
 }
