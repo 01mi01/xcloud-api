@@ -7,6 +7,7 @@ const router = Router();
 router.post("/", verifyToken, ctrl.createTweet);
 router.get("/:tweetId", ctrl.getTweet);
 router.delete("/:tweetId", verifyToken, ctrl.deleteTweet);
+router.get("/:tweetId/like", verifyToken, ctrl.getLikeStatus);
 router.post("/:tweetId/like", verifyToken, ctrl.likeTweet);
 router.delete("/:tweetId/like", verifyToken, ctrl.unlikeTweet);
 

@@ -27,6 +27,10 @@ export function unlikeTweet(tweetId: string): Promise<void> {
   return apiFetch<void>(`/v1/tweets/${encodeURIComponent(tweetId)}/like`, { method: "DELETE" });
 }
 
+export function getLikeStatus(tweetId: string): Promise<{ liked: boolean }> {
+  return apiFetch<{ liked: boolean }>(`/v1/tweets/${encodeURIComponent(tweetId)}/like`);
+}
+
 export function retweetTweet(tweetId: string, comment?: string): Promise<{ tweet: RawTweet }> {
   return apiFetch<{ tweet: RawTweet }>(`/v1/tweets/${encodeURIComponent(tweetId)}/retweet`, {
     method: "POST",

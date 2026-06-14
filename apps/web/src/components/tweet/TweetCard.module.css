@@ -118,3 +118,7 @@
   color: var(--color-accent);
   background-color: rgba(29, 155, 240, 0.1);
 }
+
+.bookmarked {
+  color: var(--color-accent);
+}

@@ -1,5 +1,6 @@
 import type { RawTweet, Tweet, User } from "../types";
 import { apiFetch } from "./client";
+import { getLikeStatus } from "./tweets";
 
 /**
  * Fetch a user by `userId`. The user-service does not expose this directly
@@ -40,9 +41,12 @@ export async function hydrateTweets(raw: RawTweet[], currentUserId?: string): Pr
     byId.set(id, fetched[i] ?? fallbackUser(id));
   });
 
-  void currentUserId; // reserved for per-viewer flags once like-state endpoint exists
+  // Fetch like status for each tweet in parallel when user is logged in
+  const likeStatuses = currentUserId
+    ? await Promise.all(raw.map((t) => getLikeStatus(t.tweetId).then((r) => r.liked).catch(() => false)))
+    : raw.map(() => false);
 
-  return raw.map((t) => ({
+  return raw.map((t, i) => ({
     tweetId:        t.tweetId,
     content:        t.content,
     author:         byId.get(t.authorId) ?? fallbackUser(t.authorId),
@@ -52,7 +56,7 @@ export async function hydrateTweets(raw: RawTweet[], currentUserId?: string): Pr
     repliesCount:   t.repliesCount ?? 0,
     createdAt:      t.createdAt,
     replyToTweetId: t.replyToTweetId ?? null,
-    liked:          false,
+    liked:          likeStatuses[i],
     retweeted:      false,
   }));
 }

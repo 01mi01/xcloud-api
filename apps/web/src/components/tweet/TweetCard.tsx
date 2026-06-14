@@ -2,9 +2,27 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ReplyModal from "./ReplyModal";
 import * as tweetsApi from "../../api/tweets";
+import { STORAGE_KEY } from "../../pages/Bookmarks";
 import type { Tweet } from "../../types";
 import Avatar from "../common/Avatar";
 import styles from "./TweetCard.module.css";
+
+function isBookmarked(tweetId: string): boolean {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const ids: string[] = raw ? JSON.parse(raw) : [];
+    return ids.includes(tweetId);
+  } catch { return false; }
+}
+
+function toggleBookmark(tweetId: string, add: boolean): void {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const ids: string[] = raw ? JSON.parse(raw) : [];
+    const next = add ? [...new Set([...ids, tweetId])] : ids.filter((id) => id !== tweetId);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch { /* ignore */ }
+}
 
 function formatCount(n: number): string {
   if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
@@ -35,6 +53,7 @@ function TweetCard({ tweet }: Props) {
   const [retweetCount, setRetweetCount] = useState(tweet.retweetCount);
   const [showReplyModal, setShowReplyModal] = useState(false);
   const [repliesCount, setRepliesCount] = useState(tweet.repliesCount);
+  const [bookmarked, setBookmarked] = useState(() => isBookmarked(tweet.tweetId));
 
   const handleLike = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -140,12 +159,20 @@ function TweetCard({ tweet }: Props) {
             <span>{formatCount(likesCount)}</span>
           </button>
 
-          <button className={`${styles.actionBtn} ${styles.bookmarkBtn}`}>
+          <button
+            className={`${styles.actionBtn} ${styles.bookmarkBtn} ${bookmarked ? styles.bookmarked : ""}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              const next = !bookmarked;
+              setBookmarked(next);
+              toggleBookmark(tweet.tweetId, next);
+            }}
+          >
             <svg
               viewBox="0 0 24 24"
               width="18"
               height="18"
-              fill="none"
+              fill={bookmarked ? "currentColor" : "none"}
               stroke="currentColor"
               strokeWidth={1.75}
             >

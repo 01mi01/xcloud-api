@@ -1,30 +1,62 @@
-import { useState } from "react";
-import { mockTweets } from "../data/mockData";
+import { useEffect, useState } from "react";
+import * as feedApi from "../api/feed";
+import { hydrateTweets } from "../api/hydrate";
+import { useAuth } from "../context/AuthContext";
 import type { Tweet } from "../types";
 import LeftSidebar from "../components/layout/LeftSidebar";
 import RightSidebar from "../components/layout/RightSidebar";
 import TweetCard from "../components/tweet/TweetCard";
 import styles from "./Bookmarks.module.css";
 
-function Bookmarks() {
-  // Bookmarks are local state only — no backend endpoint exists yet
-  // Pre-populated with a few mock tweets so the page looks real
-  const [bookmarks, setBookmarks] = useState<Tweet[]>([
-    mockTweets[0],
-    mockTweets[2],
-    mockTweets[4],
-    mockTweets[6],
-  ]);
+const STORAGE_KEY = "xcloud_bookmarks";
 
-  const clearAll = () => setBookmarks([]);
+function loadBookmarkedIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function Bookmarks() {
+  const { identity } = useAuth();
+  const [bookmarks, setBookmarks] = useState<Tweet[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const ids = loadBookmarkedIds();
+    if (ids.size === 0) {
+      setLoading(false);
+      return;
+    }
+    feedApi
+      .getFeed({ limit: 50 })
+      .then(async (res) => {
+        const matching = res.tweets.filter((t) => ids.has(t.tweetId));
+        const hydrated = await hydrateTweets(matching, identity?.userId);
+        if (!cancelled) setBookmarks(hydrated);
+      })
+      .catch(() => {
+        if (!cancelled) setBookmarks([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [identity?.userId]);
+
+  const clearAll = () => {
+    localStorage.removeItem(STORAGE_KEY);
+    setBookmarks([]);
+  };
 
   return (
     <div className={styles.layout}>
       <LeftSidebar />
 
       <main className={styles.feed}>
-
-        {/* Sticky top bar */}
         <div className={styles.topBar}>
           <span className={styles.title}>Bookmarks</span>
           {bookmarks.length > 0 && (
@@ -34,8 +66,9 @@ function Bookmarks() {
           )}
         </div>
 
-        {/* Empty state */}
-        {bookmarks.length === 0 && (
+        {loading && <p style={{ padding: "1rem", color: "var(--text-muted)" }}>Loading…</p>}
+
+        {!loading && bookmarks.length === 0 && (
           <div className={styles.emptyState}>
             <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth={1.5} className={styles.emptyIcon}>
               <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" />
@@ -47,11 +80,9 @@ function Bookmarks() {
           </div>
         )}
 
-        {/* Bookmarked tweets */}
         {bookmarks.map((tweet) => (
           <TweetCard key={tweet.tweetId} tweet={tweet} />
         ))}
-
       </main>
 
       <RightSidebar />
@@ -59,4 +90,5 @@ function Bookmarks() {
   );
 }
 
+export { loadBookmarkedIds, STORAGE_KEY };
 export default Bookmarks;
