@@ -181,6 +181,11 @@ export class EcsStack extends cdk.Stack {
         DB_NAME:                  'xcloud',
         CASSANDRA_CONTACT_POINTS: `cassandra.${this.region}.amazonaws.com`,
         CASSANDRA_KEYSPACE:       'xcloud',
+        // feed-service hydrates tweetIds by calling tweet-service over HTTP. In
+        // prod it has no localhost neighbour — route through the ALB, which
+        // forwards /v1/tweets* to tweet-service. Without this the home feed is
+        // always empty (every hydration call hits the task's own loopback).
+        TWEET_SERVICE_URL:        `http://${alb.loadBalancerDnsName}`,
         AWS_REGION:               this.region,
       },
       secrets: {

@@ -31,7 +31,16 @@ export const getTweetsByIds = async (tweetIds: string[]): Promise<HydratedTweet[
         axios
             .get<{ tweet: HydratedTweet }>(`${TWEET_SERVICE_URL}/v1/tweets/${id}`)
             .then((res) => res.data.tweet)
-            .catch(() => null) // tweet borrado o inexistente → ignorar
+            .catch((err) => {
+                // 404 = tweet borrado/inexistente → esperado, ignorar en silencio.
+                // Cualquier otra cosa (ECONNREFUSED por TWEET_SERVICE_URL mal
+                // configurado, 5xx, timeout) vacía el feed silenciosamente: loguear.
+                const status = (err as { response?: { status?: number } })?.response?.status;
+                if (status !== 404) {
+                    console.error(`[feed-service] hydrate ${id} failed:`, status ?? (err as Error).message);
+                }
+                return null;
+            })
     );
 
     const results = await Promise.all(requests);
