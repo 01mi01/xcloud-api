@@ -44,12 +44,15 @@ export class SqsPublisher implements Publisher {
     if (topicEnv) {
       const TopicArn = process.env[topicEnv];
       if (!TopicArn) throw new Error(`Missing ${topicEnv} for event ${event}`);
+      // FIFO-only params (MessageGroupId/MessageDeduplicationId) are rejected by
+      // standard topics — only send them when the target is actually a .fifo topic.
+      const fifo = TopicArn.endsWith('.fifo');
       await this.sns.send(
         new PublishCommand({
           TopicArn,
           Message: body,
-          MessageGroupId: opts.groupId,
-          MessageDeduplicationId: opts.deduplicationId,
+          MessageGroupId: fifo ? opts.groupId : undefined,
+          MessageDeduplicationId: fifo ? opts.deduplicationId : undefined,
         }),
       );
       return;
@@ -58,12 +61,14 @@ export class SqsPublisher implements Publisher {
     const queueEnv = SQS_QUEUE_ENV[event];
     const QueueUrl = queueEnv ? process.env[queueEnv] : undefined;
     if (!QueueUrl) throw new Error(`No SQS queue configured for event ${event}`);
+    // Same FIFO guard for SQS (standard queues reject these params).
+    const fifo = QueueUrl.endsWith('.fifo');
     await this.sqs.send(
       new SendMessageCommand({
         QueueUrl,
         MessageBody: body,
-        MessageGroupId: opts.groupId,
-        MessageDeduplicationId: opts.deduplicationId,
+        MessageGroupId: fifo ? opts.groupId : undefined,
+        MessageDeduplicationId: fifo ? opts.deduplicationId : undefined,
       }),
     );
   }

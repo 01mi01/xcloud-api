@@ -16,7 +16,8 @@ export const createTweet = async (req: Request, res: Response): Promise<void> =>
     try {
         const tweet = await svc.createTweet((req as AuthRequest).user.sub, { content, mediaUrls, replyToTweetId });
         res.status(201).json({ tweet });
-    } catch {
+    } catch (err) {
+        console.error("[tweet-service] createTweet failed:", err);
         res.status(500).json({ message: "Internal server error" });
     }
 };
@@ -27,6 +28,7 @@ export const getTweet = async (req: Request, res: Response): Promise<void> => {
         res.status(200).json({ tweet });
     } catch (err) {
         if ((err as Error).name === "TweetNotFoundError") { res.status(404).json({ message: (err as Error).message }); return; }
+        console.error("[tweet-service] getTweet failed:", err);
         res.status(500).json({ message: "Internal server error" });
     }
 };
@@ -36,7 +38,8 @@ export const getTweetsByAuthor = async (req: Request, res: Response): Promise<vo
         const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
         const tweets = await svc.getTweetsByAuthor((req.params.authorId as string), limit);
         res.status(200).json({ tweets });
-    } catch {
+    } catch (err) {
+        console.error("[tweet-service] getTweetsByAuthor failed:", err);
         res.status(500).json({ message: "Internal server error" });
     }
 };
@@ -45,7 +48,8 @@ export const getReplies = async (req: Request, res: Response): Promise<void> => 
     try {
         const tweets = await svc.getReplies((req.params.tweetId as string));
         res.status(200).json({ tweets });
-    } catch {
+    } catch (err) {
+        console.error("[tweet-service] getReplies failed:", err);
         res.status(500).json({ message: "Internal server error" });
     }
 };
@@ -55,7 +59,8 @@ export const getLikedTweets = async (req: Request, res: Response): Promise<void>
         const limit = Math.min(parseInt(req.query.limit as string) || 50, 50);
         const tweets = await svc.getLikedTweets((req.params.userId as string), limit);
         res.status(200).json({ tweets });
-    } catch {
+    } catch (err) {
+        console.error("[tweet-service] getLikedTweets failed:", err);
         res.status(500).json({ message: "Internal server error" });
     }
 };
@@ -66,7 +71,8 @@ export const getInteractions = async (req: Request, res: Response): Promise<void
         if (!Array.isArray(tweetIds)) { res.status(400).json({ message: "tweetIds[] is required" }); return; }
         const result = await svc.getInteractions((req as AuthRequest).user.sub, tweetIds.slice(0, 100));
         res.status(200).json(result);
-    } catch {
+    } catch (err) {
+        console.error("[tweet-service] getInteractions failed:", err);
         res.status(500).json({ message: "Internal server error" });
     }
 };

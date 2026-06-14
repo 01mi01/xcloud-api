@@ -68,12 +68,20 @@ export const likedByUser = async (userId: string, limit = 50): Promise<Tweet[]> 
 };
 
 export const countReplies = async (tweetId: string): Promise<number> => {
-    const result = await client.execute(
-        "SELECT COUNT(*) AS c FROM replies_by_tweet WHERE reply_to_tweet_id = ?",
-        [cassandra.types.Uuid.fromString(tweetId)],
-        { prepare: true }
-    );
-    return Number(result.first()?.c ?? 0);
+    // Amazon Keyspaces rejects SELECT COUNT(*) ("countRows is not yet supported"),
+    // so count rows client-side. The replies partition is bounded per tweet and
+    // repliesCount is display-only, so fall back to 0 rather than fail the read.
+    try {
+        const result = await client.execute(
+            "SELECT reply_to_tweet_id FROM replies_by_tweet WHERE reply_to_tweet_id = ?",
+            [cassandra.types.Uuid.fromString(tweetId)],
+            { prepare: true }
+        );
+        return result.rowLength;
+    } catch (err) {
+        console.error("[tweet-service] countReplies failed:", (err as Error).message);
+        return 0;
+    }
 };
 
 export const insert = async ({ tweetId, authorId, content, mediaUrls, replyToTweetId }: InsertTweetParams): Promise<Tweet> => {
@@ -105,7 +113,9 @@ export const insert = async ({ tweetId, authorId, content, mediaUrls, replyToTwe
         });
     }
 
-    await client.batch(queries, { prepare: true });
+    // Keyspaces rejects LOGGED batches (the driver default); these batches span
+    // two partitions/tables, so UNLOGGED is correct (and works on local Cassandra too).
+    await client.batch(queries, { prepare: true, logged: false });
 
     const result = await client.execute(
         "SELECT * FROM tweets WHERE tweet_id = ?",
@@ -125,7 +135,7 @@ export const remove = async (tweetId: string): Promise<boolean> => {
     await client.batch([
         { query: "DELETE FROM tweets WHERE tweet_id = ?", params: [id] },
         { query: "DELETE FROM tweets_by_author WHERE author_id = ? AND created_at = ? AND tweet_id = ?", params: [author, tweet.createdAt, id] },
-    ], { prepare: true });
+    ], { prepare: true, logged: false });
 
     return true;
 };
@@ -138,7 +148,7 @@ export const insertLike = async (userId: string, tweetId: string): Promise<void>
     await client.batch([
         { query: "INSERT INTO likes (tweet_id, user_id, created_at) VALUES (?, ?, ?)", params: [tid, uid, now] },
         { query: "INSERT INTO likes_by_user (user_id, tweet_id, created_at) VALUES (?, ?, ?)", params: [uid, tid, now] },
-    ], { prepare: true });
+    ], { prepare: true, logged: false });
 
     const current = await client.execute("SELECT likes_count FROM tweets WHERE tweet_id = ?", [tid], { prepare: true });
     const count = current.first()?.likes_count ?? 0;
@@ -155,7 +165,7 @@ export const deleteLike = async (userId: string, tweetId: string): Promise<boole
     await client.batch([
         { query: "DELETE FROM likes WHERE tweet_id = ? AND user_id = ?", params: [tid, uid] },
         { query: "DELETE FROM likes_by_user WHERE user_id = ? AND tweet_id = ?", params: [uid, tid] },
-    ], { prepare: true });
+    ], { prepare: true, logged: false });
 
     const current = await client.execute("SELECT likes_count FROM tweets WHERE tweet_id = ?", [tid], { prepare: true });
     const count = current.first()?.likes_count ?? 0;
@@ -181,7 +191,7 @@ export const insertRetweet = async (userId: string, tweetId: string): Promise<vo
     await client.batch([
         { query: "INSERT INTO retweets (tweet_id, user_id, created_at) VALUES (?, ?, ?)", params: [tid, uid, now] },
         { query: "INSERT INTO retweets_by_user (user_id, tweet_id, created_at) VALUES (?, ?, ?)", params: [uid, tid, now] },
-    ], { prepare: true });
+    ], { prepare: true, logged: false });
 
     const current = await client.execute("SELECT retweet_count FROM tweets WHERE tweet_id = ?", [tid], { prepare: true });
     const count = current.first()?.retweet_count ?? 0;
@@ -198,7 +208,7 @@ export const deleteRetweet = async (userId: string, tweetId: string): Promise<bo
     await client.batch([
         { query: "DELETE FROM retweets WHERE tweet_id = ? AND user_id = ?", params: [tid, uid] },
         { query: "DELETE FROM retweets_by_user WHERE user_id = ? AND tweet_id = ?", params: [uid, tid] },
-    ], { prepare: true });
+    ], { prepare: true, logged: false });
 
     const current = await client.execute("SELECT retweet_count FROM tweets WHERE tweet_id = ?", [tid], { prepare: true });
     const count = current.first()?.retweet_count ?? 0;
