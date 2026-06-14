@@ -24,6 +24,14 @@ const proxy = Object.fromEntries(
   ]),
 )
 
+// Real-time notifications channel: proxy the WebSocket upgrade at /ws to the
+// notification-service so the SPA can use a same-origin ws:// URL.
+proxy['/ws'] = {
+  target: `ws://localhost:${SERVICE_PORTS.notifications}`,
+  ws:     true,
+  changeOrigin: true,
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],

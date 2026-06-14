@@ -19,7 +19,15 @@ export class NotAuthorizedError extends Error {
     constructor(m: string) { super(m); this.name = "NotAuthorizedException"; }
 }
 
-export const registerUser = async (handle: string, email: string, password: string): Promise<string> => {
+// Signs a JWT with the same claim shape used at login (sub/email/username/groups).
+const issueToken = (userId: string, handle: string, email: string, role: string): string =>
+    jwt.sign(
+        { sub: userId, email, username: handle, "cognito:groups": [role] },
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRES }
+    );
+
+export const registerUser = async (handle: string, email: string, password: string): Promise<{ userId: string; token: string }> => {
     const existing = await pool.query("SELECT user_id FROM auth_users WHERE email = $1", [email]);
     if (existing.rows.length > 0) throw new UsernameExistsError("Email already registered");
 
@@ -50,7 +58,8 @@ export const registerUser = async (handle: string, email: string, password: stri
         client.release();
     }
 
-    return userId;
+    // §3.1 — registration returns a JWT so the client is logged in immediately.
+    return { userId, token: issueToken(userId, handle, email, "user") };
 };
 
 export const loginUser = async (email: string, password: string): Promise<AuthTokens> => {
@@ -65,14 +74,7 @@ export const loginUser = async (email: string, password: string): Promise<AuthTo
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) throw new NotAuthorizedError("Invalid credentials");
 
-    const payload = {
-        sub:              user.user_id,
-        email:            user.email,
-        username:         user.handle,
-        "cognito:groups": [user.role],
-    };
-
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+    const token = issueToken(user.user_id, user.handle, user.email, user.role);
 
     return { AccessToken: token, IdToken: token, ExpiresIn: 8 * 60 * 60 };
 };

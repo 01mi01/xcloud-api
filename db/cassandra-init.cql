@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS tweets (
     reply_to_tweet_id UUID,
     likes_count       INT,
     retweet_count     INT,
+    replies_count     INT,
     created_at        TIMESTAMP,
     PRIMARY KEY (tweet_id)
 );
@@ -35,6 +36,22 @@ CREATE TABLE IF NOT EXISTS likes (
 
 -- Reverse index to check if a user liked a tweet efficiently
 CREATE TABLE IF NOT EXISTS likes_by_user (
+    user_id    UUID,
+    tweet_id   UUID,
+    created_at TIMESTAMP,
+    PRIMARY KEY (user_id, tweet_id)
+);
+
+-- Retweets (repost relationship; toggled on/off like a like)
+CREATE TABLE IF NOT EXISTS retweets (
+    tweet_id   UUID,
+    user_id    UUID,
+    created_at TIMESTAMP,
+    PRIMARY KEY (tweet_id, user_id)
+);
+
+-- Reverse index to check if a user retweeted a tweet efficiently
+CREATE TABLE IF NOT EXISTS retweets_by_user (
     user_id    UUID,
     tweet_id   UUID,
     created_at TIMESTAMP,
