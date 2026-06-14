@@ -65,10 +65,57 @@ export const unlikeTweet = async (req: Request, res: Response): Promise<void> =>
     }
 };
 
+export const getTweetsByAuthor = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const tweets = await repo.findByAuthor(req.params.authorId as string);
+        res.status(200).json({ tweets });
+    } catch {
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
 export const getReplies = async (req: Request, res: Response): Promise<void> => {
     try {
         const replies = await repo.findReplies(req.params.tweetId as string);
         res.status(200).json({ replies });
+    } catch {
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+export const retweetTweet = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const already = await repo.retweetExists((req as AuthRequest).user.sub, req.params.tweetId as string);
+        if (already) { res.status(409).json({ message: "Already retweeted" }); return; }
+        await repo.insertRetweet((req as AuthRequest).user.sub, req.params.tweetId as string);
+        res.status(204).send();
+    } catch {
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+export const unretweetTweet = async (req: Request, res: Response): Promise<void> => {
+    try {
+        await repo.deleteRetweet((req as AuthRequest).user.sub, req.params.tweetId as string);
+        res.status(204).send();
+    } catch {
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+export const getRetweetStatus = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const retweeted = await repo.retweetExists((req as AuthRequest).user.sub, req.params.tweetId as string);
+        res.status(200).json({ retweeted });
+    } catch {
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+export const getLikedByUser = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const tweets = await repo.findLikedByUser(req.params.userId as string);
+        res.status(200).json({ tweets });
     } catch {
         res.status(500).json({ message: "Internal server error" });
     }

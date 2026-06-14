@@ -1,6 +1,6 @@
 import type { RawTweet, Tweet, User } from "../types";
 import { apiFetch } from "./client";
-import { getLikeStatus } from "./tweets";
+import { getLikeStatus, getRetweetStatus } from "./tweets";
 
 const BOOKMARK_KEY = "xcloud_bookmarks";
 function getBookmarkedIds(): Set<string> {
@@ -49,10 +49,13 @@ export async function hydrateTweets(raw: RawTweet[], currentUserId?: string): Pr
     byId.set(id, fetched[i] ?? fallbackUser(id));
   });
 
-  // Fetch like status for each tweet in parallel when user is logged in
-  const likeStatuses = currentUserId
-    ? await Promise.all(raw.map((t) => getLikeStatus(t.tweetId).then((r) => r.liked).catch(() => false)))
-    : raw.map(() => false);
+  // Fetch like and retweet status for each tweet in parallel when user is logged in
+  const [likeStatuses, retweetStatuses] = currentUserId
+    ? await Promise.all([
+        Promise.all(raw.map((t) => getLikeStatus(t.tweetId).then((r) => r.liked).catch(() => false))),
+        Promise.all(raw.map((t) => getRetweetStatus(t.tweetId).then((r) => r.retweeted).catch(() => false))),
+      ])
+    : [raw.map(() => false), raw.map(() => false)];
 
   const bookmarkedIds = getBookmarkedIds();
 
@@ -83,7 +86,7 @@ export async function hydrateTweets(raw: RawTweet[], currentUserId?: string): Pr
     createdAt:           t.createdAt,
     replyToTweetId:      t.replyToTweetId ?? null,
     liked:               likeStatuses[i],
-    retweeted:           false,
+    retweeted:           retweetStatuses[i],
     bookmarked:          bookmarkedIds.has(t.tweetId),
     replyToAuthorHandle: replyToHandles[i],
   }));

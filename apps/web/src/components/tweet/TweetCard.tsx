@@ -97,14 +97,16 @@ function TweetCard({ tweet, onDeleted, onReplyCreated }: Props) {
 
   const handleRetweet = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (retweeted) return;
-    setRetweeted(true);
-    setRetweetCount((prev) => prev + 1);
+    const wasRetweeted = retweeted;
+    setRetweeted(!wasRetweeted);
+    setRetweetCount((prev) => wasRetweeted ? prev - 1 : prev + 1);
     try {
-      await tweetsApi.retweetTweet(tweet.tweetId);
-    } catch {
-      setRetweeted(false);
-      setRetweetCount((prev) => prev - 1);
+      if (wasRetweeted) await tweetsApi.unretweetTweet(tweet.tweetId);
+      else await tweetsApi.retweetTweet(tweet.tweetId);
+    } catch (err) {
+      console.error("Retweet error:", err);
+      setRetweeted(wasRetweeted);
+      setRetweetCount((prev) => wasRetweeted ? prev + 1 : prev - 1);
     }
   };
 

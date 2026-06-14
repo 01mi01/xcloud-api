@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as usersApi from "../api/users";
-import { mockCurrentUser, mockUsers, mockTweets } from "../data/mockData";
-import * as tweetsApi from "../api/tweets";
+import { getTweetsByAuthor, getLikedByUser } from "../api/tweets";
 import { hydrateTweets } from "../api/hydrate";
 import { ApiError } from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -21,6 +20,7 @@ function Profile() {
 
   const [user, setUser] = useState<User | null>(null);
   const [tweets, setTweets] = useState<Tweet[]>([]);
+  const [activeTab, setActiveTab] = useState<"posts" | "likes">("posts");
   const [loadingUser, setLoadingUser] = useState(true);
   const [loadingTweets, setLoadingTweets] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,8 +54,17 @@ function Profile() {
     if (!user) return;
     setLoadingTweets(true);
     setTweets([]);
-    setLoadingTweets(false);
-  }, [user]);
+    const fetch = activeTab === "posts"
+      ? getTweetsByAuthor(user.userId)
+      : getLikedByUser(user.userId);
+    fetch
+      .then(async ({ tweets: raw }) => {
+        const hydrated = await hydrateTweets(raw, identity?.userId);
+        setTweets(hydrated);
+      })
+      .catch(() => setTweets([]))
+      .finally(() => setLoadingTweets(false));
+  }, [user, identity?.userId, activeTab]);
 
   const handleFollow = async () => {
     if (!user) return;
@@ -129,7 +138,7 @@ function Profile() {
           <div className={styles.topBarInfo}>
             <span className={styles.topBarName}>{user.displayName}</span>
             <span className={styles.topBarCount}>
-              {user.followersCount.toLocaleString()} followers
+              {tweets.length.toLocaleString()} {activeTab === "posts" ? "posts" : "likes"}
             </span>
           </div>
         </div>
@@ -139,7 +148,7 @@ function Profile() {
 
         {/* Avatar row */}
         <div className={styles.avatarRow}>
-          <Avatar size={80} />
+          <Avatar size={120} />
           {isOwnProfile ? (
             <button
               className={styles.editBtn}
@@ -197,16 +206,16 @@ function Profile() {
 
         {/* Tabs */}
         <div className={styles.tabs}>
-          <button className={`${styles.tab} ${styles.tabActive}`}>Posts</button>
-          <button className={styles.tab}>Replies</button>
-          <button className={styles.tab}>Media</button>
-          <button className={styles.tab}>Likes</button>
+          <button className={`${styles.tab} ${activeTab === "posts" ? styles.tabActive : ""}`} onClick={() => setActiveTab("posts")}>Posts</button>
+          <button className={styles.tab} disabled>Replies</button>
+          <button className={styles.tab} disabled>Media</button>
+          <button className={`${styles.tab} ${activeTab === "likes" ? styles.tabActive : ""}`} onClick={() => setActiveTab("likes")}>Likes</button>
         </div>
 
         {/* Tweet list */}
-        {loadingTweets && <p className={styles.msg}>Loading posts…</p>}
+        {loadingTweets && <p className={styles.msg}>Loading…</p>}
         {!loadingTweets && tweets.length === 0 && (
-          <p className={styles.msg}>No posts yet.</p>
+          <p className={styles.msg}>{activeTab === "posts" ? "No posts yet." : "No liked posts yet."}</p>
         )}
         {tweets.map((tweet) => (
           <TweetCard key={tweet.tweetId} tweet={tweet} />

@@ -121,6 +121,69 @@ export const findReplies = async (tweetId: string): Promise<Tweet[]> => {
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 };
 
+export const findByAuthor = async (authorId: string): Promise<Tweet[]> => {
+    const rows = await client.execute(
+        "SELECT tweet_id, created_at FROM tweets_by_author WHERE author_id = ? ORDER BY created_at DESC",
+        [cassandra.types.Uuid.fromString(authorId)],
+        { prepare: true }
+    );
+    const tweets = await Promise.all(
+        rows.rows.map((r) => findById(r.tweet_id.toString()))
+    );
+    return tweets.filter((t): t is Tweet => t !== null);
+};
+
+export const insertRetweet = async (userId: string, tweetId: string): Promise<void> => {
+    const uid = cassandra.types.Uuid.fromString(userId);
+    const tid = cassandra.types.Uuid.fromString(tweetId);
+    const now = new Date();
+    await client.batch([
+        { query: "INSERT INTO retweets (tweet_id, user_id, created_at) VALUES (?, ?, ?)", params: [tid, uid, now] },
+        { query: "INSERT INTO retweets_by_user (user_id, tweet_id, created_at) VALUES (?, ?, ?)", params: [uid, tid, now] },
+    ], { prepare: true });
+    const current = await client.execute("SELECT retweet_count FROM tweets WHERE tweet_id = ?", [tid], { prepare: true });
+    const count = current.first()?.retweet_count ?? 0;
+    await client.execute("UPDATE tweets SET retweet_count = ? WHERE tweet_id = ?", [count + 1, tid], { prepare: true });
+};
+
+export const deleteRetweet = async (userId: string, tweetId: string): Promise<boolean> => {
+    const exists = await retweetExists(userId, tweetId);
+    if (!exists) return false;
+    const uid = cassandra.types.Uuid.fromString(userId);
+    const tid = cassandra.types.Uuid.fromString(tweetId);
+    await client.batch([
+        { query: "DELETE FROM retweets WHERE tweet_id = ? AND user_id = ?", params: [tid, uid] },
+        { query: "DELETE FROM retweets_by_user WHERE user_id = ? AND tweet_id = ?", params: [uid, tid] },
+    ], { prepare: true });
+    const current = await client.execute("SELECT retweet_count FROM tweets WHERE tweet_id = ?", [tid], { prepare: true });
+    const count = current.first()?.retweet_count ?? 0;
+    await client.execute("UPDATE tweets SET retweet_count = ? WHERE tweet_id = ?", [Math.max(0, count - 1), tid], { prepare: true });
+    return true;
+};
+
+export const retweetExists = async (userId: string, tweetId: string): Promise<boolean> => {
+    const result = await client.execute(
+        "SELECT tweet_id FROM retweets_by_user WHERE user_id = ? AND tweet_id = ?",
+        [cassandra.types.Uuid.fromString(userId), cassandra.types.Uuid.fromString(tweetId)],
+        { prepare: true }
+    );
+    return result.rowLength > 0;
+};
+
+export const findLikedByUser = async (userId: string): Promise<Tweet[]> => {
+    const rows = await client.execute(
+        "SELECT tweet_id, created_at FROM likes_by_user WHERE user_id = ?",
+        [cassandra.types.Uuid.fromString(userId)],
+        { prepare: true }
+    );
+    const tweets = await Promise.all(
+        rows.rows.map((r) => findById(r.tweet_id.toString()))
+    );
+    return tweets
+        .filter((t): t is Tweet => t !== null)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+};
+
 export const likeExists = async (userId: string, tweetId: string): Promise<boolean> => {
     const result = await client.execute(
         "SELECT tweet_id FROM likes_by_user WHERE user_id = ? AND tweet_id = ?",

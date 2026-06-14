@@ -129,14 +129,16 @@ function TweetDetail() {
   };
 
   const handleRetweet = async () => {
-    if (!tweet || retweeted) return;
-    setRetweeted(true);
-    setRetweetCount((n) => n + 1);
+    if (!tweet) return;
+    const wasRetweeted = retweeted;
+    setRetweeted(!wasRetweeted);
+    setRetweetCount((n) => wasRetweeted ? n - 1 : n + 1);
     try {
-      await tweetsApi.retweetTweet(tweet.tweetId);
+      if (wasRetweeted) await tweetsApi.unretweetTweet(tweet.tweetId);
+      else await tweetsApi.retweetTweet(tweet.tweetId);
     } catch {
-      setRetweeted(false);
-      setRetweetCount((n) => n - 1);
+      setRetweeted(wasRetweeted);
+      setRetweetCount((n) => wasRetweeted ? n + 1 : n - 1);
     }
   };
 

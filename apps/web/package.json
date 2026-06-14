@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@rolldown/binding-win32-x64-msvc": "^1.0.2",
     "@xcloud/sdk-client": "*",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",

@@ -35,9 +35,22 @@ export function getLikeStatus(tweetId: string): Promise<{ liked: boolean }> {
   return apiFetch<{ liked: boolean }>(`/v1/tweets/${encodeURIComponent(tweetId)}/like`);
 }
 
-export function retweetTweet(tweetId: string, comment?: string): Promise<{ tweet: RawTweet }> {
-  return apiFetch<{ tweet: RawTweet }>(`/v1/tweets/${encodeURIComponent(tweetId)}/retweet`, {
-    method: "POST",
-    body: comment ? { comment } : {},
-  });
+export function getTweetsByAuthor(authorId: string): Promise<{ tweets: RawTweet[] }> {
+  return apiFetch(`/v1/tweets/by-author/${encodeURIComponent(authorId)}`);
+}
+
+export function getLikedByUser(userId: string): Promise<{ tweets: RawTweet[] }> {
+  return apiFetch(`/v1/tweets/liked-by/${encodeURIComponent(userId)}`);
+}
+
+export function getRetweetStatus(tweetId: string): Promise<{ retweeted: boolean }> {
+  return apiFetch<{ retweeted: boolean }>(`/v1/tweets/${encodeURIComponent(tweetId)}/retweet`);
+}
+
+export function retweetTweet(tweetId: string): Promise<void> {
+  return apiFetch<void>(`/v1/tweets/${encodeURIComponent(tweetId)}/retweet`, { method: "POST" });
+}
+
+export function unretweetTweet(tweetId: string): Promise<void> {
+  return apiFetch<void>(`/v1/tweets/${encodeURIComponent(tweetId)}/retweet`, { method: "DELETE" });
 }
