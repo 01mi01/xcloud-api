@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import * as notificationsApi from "../api/notifications";
+import { connectNotifications } from "../api/notifications-ws";
 type Notification = notificationsApi.Notification & {
   actorName: string;
   actorHandle: string;
@@ -83,6 +84,28 @@ useEffect(() => {
       )
     )
     .catch(() => setNotifications([]));
+}, []);
+
+// Real-time: prepend notifications pushed over the WebSocket as they arrive.
+useEffect(() => {
+  const disconnect = connectNotifications((push) => {
+    setNotifications((prev) => {
+      if (push.notifId && prev.some((n) => n.id === push.notifId)) return prev; // dedupe
+      const incoming: Notification = {
+        id: push.notifId ?? `ws-${Date.now()}`,
+        type: push.type,
+        actorId: push.actor ?? "",
+        targetId: push.tweetId ?? null,
+        read: false,
+        createdAt: new Date().toISOString(),
+        actorName: push.actor ?? "Someone",
+        actorHandle: push.actor ?? "",
+        excerpt: push.tweetId ?? undefined,
+      };
+      return [incoming, ...prev];
+    });
+  });
+  return disconnect;
 }, []);
 
   const markAllRead = () => {

@@ -6,6 +6,7 @@ dotenv.config({ path: path.resolve(__dirname, "../../../../.env") });
 import app from "./app";
 import { startLikeConsumer } from "./consumers/like.consumer";
 import { startFollowConsumer } from "./consumers/follow.consumer";
+import { attachWebSocketServer } from "./websocket/ws.server";
 
 const PORT = parseInt(process.env.NOTIFICATION_PORT ?? "3004");
 
@@ -31,9 +32,12 @@ const main = async (): Promise<void> => {
     startConsumers();
 
     // Start HTTP server for REST API (GET notifications, mark as read)
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
         console.log(`Notification Service running on port ${PORT}`);
     });
+
+    // Attach the real-time WebSocket channel to the same HTTP server.
+    attachWebSocketServer(server);
 };
 
 main();
