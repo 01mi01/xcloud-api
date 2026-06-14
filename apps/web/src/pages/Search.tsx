@@ -25,18 +25,25 @@ function Search() {
   const [searchParams] = useSearchParams();
   const { identity } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
-  const initialQ = searchParams.get("q") ?? "";
-  const [query, setQuery] = useState(initialQ);
+  const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [tweetResults, setTweetResults] = useState<Tweet[]>([]);
   const [userResults, setUserResults] = useState<User[]>([]);
   const [searching, setSearching] = useState(false);
   const [focused, setFocused] = useState(false);
-  const [submitted, setSubmitted] = useState(initialQ.length > 0);
+  const [submitted, setSubmitted] = useState((searchParams.get("q") ?? "").length > 0);
   const [activeTab, setActiveTab] = useState<Tab>("tweets");
 
+  // Sincroniza cuando cambia ?q= en la URL (ej: click en trending del sidebar)
   useEffect(() => {
-    if (!initialQ) inputRef.current?.focus();
-  }, []);
+    const q = searchParams.get("q") ?? "";
+    if (q) {
+      setQuery(q);
+      setSubmitted(true);
+      setFocused(false);
+    } else {
+      inputRef.current?.focus();
+    }
+  }, [searchParams]);
 
   const handleCancel = () => {
     setQuery("");
@@ -231,7 +238,12 @@ function Search() {
           <div className={styles.trending}>
             <h2 className={styles.trendingTitle}>What's happening</h2>
             {TRENDING.map((item, i) => (
-              <div key={i} className={styles.trendItem}>
+              <div key={i} className={styles.trendItem} onClick={() => {
+                const term = item.topic;
+                setQuery(term);
+                setSubmitted(true);
+                setFocused(false);
+              }}>
                 <div className={styles.trendMeta}>{item.category}</div>
                 <div className={styles.trendTopic}>{item.topic}</div>
                 <div className={styles.trendPosts}>{item.posts}</div>

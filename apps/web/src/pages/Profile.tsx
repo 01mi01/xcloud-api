@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as usersApi from "../api/users";
+import { apiFetch } from "../api/client";
 import { getTweetsByAuthor, getLikedByUser } from "../api/tweets";
 import { hydrateTweets } from "../api/hydrate";
 import { ApiError } from "../api/client";
@@ -38,9 +39,13 @@ function Profile() {
     setError(null);
     usersApi
       .getUser(targetHandle)
-      .then((u) => {
+      .then(async (u) => {
         setUser(u);
-        setFollowing(false);
+        // Consultar estado real de follow
+        if (!isOwnProfile) {
+          const res = await apiFetch<{ following: boolean }>(`/v1/users/${u.userId}/follow`).catch(() => ({ following: false }));
+          setFollowing(res.following);
+        }
       })
       .catch((err: unknown) => {
         if (err instanceof ApiError && err.status === 404)
@@ -85,8 +90,11 @@ function Profile() {
       }
       // Refresh auth context if it's our own follow graph
       await refresh();
-    } catch {
-      // silently ignore — the UI state will be inconsistent but not broken
+    } catch (err) {
+      // Si ya sigue (estado desincronizado), corregir el estado local
+      if (err instanceof ApiError && err.status === 409) {
+        setFollowing(true);
+      }
     } finally {
       setFollowLoading(false);
     }
@@ -193,11 +201,11 @@ function Profile() {
             </span>
           </div>
           <div className={styles.followStats}>
-            <span>
+            <span className={styles.statLink} onClick={() => navigate(`/profile/${user.handle}/connections/following`)}>
               <strong>{user.followingCount.toLocaleString()}</strong>{" "}
               <span className={styles.statLabel}>Following</span>
             </span>
-            <span>
+            <span className={styles.statLink} onClick={() => navigate(`/profile/${user.handle}/connections/followers`)}>
               <strong>{user.followersCount.toLocaleString()}</strong>{" "}
               <span className={styles.statLabel}>Followers</span>
             </span>

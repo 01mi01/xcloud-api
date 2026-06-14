@@ -35,6 +35,18 @@ export const search = async (query: string): Promise<User[]> => {
     return repo.search(query);
 };
 
+export const isFollowing = async (followerId: string, followingId: string): Promise<boolean> => {
+    return repo.followExists(followerId, followingId);
+};
+
+export const getFollowing = async (userId: string): Promise<User[]> => {
+    return repo.getFollowing(userId);
+};
+
+export const getFollowers = async (userId: string): Promise<User[]> => {
+    return repo.getFollowers(userId);
+};
+
 export const follow = async (followerId: string, followingId: string): Promise<void> => {
     const target = await repo.findById(followingId);
     if (!target) throw new UserNotFoundError("Target user not found");

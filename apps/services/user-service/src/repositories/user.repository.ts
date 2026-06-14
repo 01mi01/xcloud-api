@@ -84,3 +84,19 @@ export const followExists = async (followerId: string, followingId: string): Pro
     );
     return rows.length > 0;
 };
+
+export const getFollowing = async (userId: string): Promise<User[]> => {
+    const { rows } = await pool.query(
+        `${WITH_COUNTS} INNER JOIN follows f ON u.user_id = f.following_id WHERE f.follower_id = $1 ORDER BY u.display_name`,
+        [userId]
+    );
+    return rows.map(fromRow);
+};
+
+export const getFollowers = async (userId: string): Promise<User[]> => {
+    const { rows } = await pool.query(
+        `${WITH_COUNTS} INNER JOIN follows f ON u.user_id = f.follower_id WHERE f.following_id = $1 ORDER BY u.display_name`,
+        [userId]
+    );
+    return rows.map(fromRow);
+};

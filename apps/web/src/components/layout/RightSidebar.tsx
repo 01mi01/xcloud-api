@@ -113,7 +113,7 @@ function RightSidebar({ hideSearch = false }: { hideSearch?: boolean }) {
       <div className={styles.card}>
         <h2 className={styles.cardTitle}>What's happening</h2>
         {mockTrends.map((trend, i) => (
-          <div key={i} className={styles.trendItem}>
+          <div key={i} className={styles.trendItem} onClick={() => navigate(`/search?q=${encodeURIComponent(trend.topic)}`)}>
             <span className={styles.trendCategory}>{trend.category}</span>
             <span className={styles.trendTopic}>{trend.topic}</span>
             <span className={styles.trendCount}>{trend.tweetCount} posts</span>
