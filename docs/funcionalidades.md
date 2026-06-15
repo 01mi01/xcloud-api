@@ -12,9 +12,10 @@
 X(dot)com es un clon funcional de Twitter/X construido como un sistema de
 **8 microservicios** en un monorepo TypeScript (npm workspaces), con un
 frontend SPA en React 19. El sistema corre completo en local sobre Docker
-(PostgreSQL, Cassandra, Redis, Kafka, Elasticsearch) y está preparado para
-desplegarse en AWS mediante **infraestructura como código (AWS CDK)**:
-ECS Fargate, RDS, ElastiCache, SQS/SNS, OpenSearch, S3 y CloudFront.
+(PostgreSQL, Cassandra, Redis, Kafka, Elasticsearch) y está **desplegado y
+funcionando end-to-end** en AWS (entorno *beta*, us-east-2) mediante
+**infraestructura como código (AWS CDK)**: ECS Fargate, RDS, ElastiCache,
+SQS/SNS, OpenSearch, S3 y CloudFront.
 
 Las características diferenciadoras del proyecto son:
 
@@ -28,12 +29,14 @@ Las características diferenciadoras del proyecto son:
 - **Persistencia políglota**: cada servicio usa el almacén adecuado a su
   patrón de acceso (relacional, wide-column, cache, índice invertido).
 - **Optimización de costos documentada**: dos ADRs sustentan el reemplazo de
-  MSK→SQS y EKS→ECS Fargate, con un entorno *beta* objetivo de ~$136/mes.
+  MSK→SQS y EKS→ECS Fargate; el entorno *beta* desplegado cuesta ~$136/mes de
+  recursos base + ~$25/mes del nodo OpenSearch (`t3.small.search`).
 
 Estado actual: **13 workspaces compilan**, **55/55 tests unitarios pasan**
 (8 suites de servicios + infraestructura) y el flujo end-to-end
 (registro → tweet con imagen → fan-out → feed → like/retweet/reply →
-notificación en tiempo real → búsqueda de tweets y usuarios) funciona en local.
+notificación en tiempo real → búsqueda de tweets y usuarios) funciona **tanto
+en local como en el entorno beta desplegado en AWS**.
 
 ---
 
@@ -185,7 +188,7 @@ que el código de los servicios sea idéntico en ambos entornos.
 | PostgreSQL 17 | Docker | RDS PostgreSQL | usuarios, follows, credenciales, notificaciones |
 | Cassandra 4.1 | Docker | Amazon Keyspaces | tweets y likes (escritura intensiva, particionado por autor) |
 | Redis 7 | Docker | ElastiCache Redis | feeds materializados (listas por usuario) |
-| Elasticsearch 8.13 | Docker | OpenSearch | índice de búsqueda full-text de tweets |
+| Elasticsearch 8.13 | Docker | OpenSearch | índice de búsqueda full-text de tweets y usuarios |
 | disco local | carpeta `uploads/` | S3 + CloudFront | imágenes de tweets (media-service) |
 
 Los esquemas se inicializan automáticamente al levantar Docker
@@ -204,7 +207,8 @@ Los esquemas se inicializan automáticamente al levantar Docker
   (el corazón/retweet aparece activo si *tú* ya interactuaste), imágenes,
   paginación por cursor.
 - **Detalle de tweet**: `/tweet/:tweetId` — imágenes, **respuestas
-  persistentes**, y barra de acciones funcional (like/retweet/responder).
+  persistentes**, barra de acciones funcional (like/retweet/responder) y
+  **autor clicable** (navega a su perfil).
 - **Perfiles**: `/profile` y `/profile/:handle` — edición de perfil,
   follow/unfollow, contadores, y pestañas tipo X: **Posts** (sin respuestas),
   **Replies**, **Media** (tweets con imágenes) y **Likes** (tweets que dio like).
@@ -218,6 +222,10 @@ Los esquemas se inicializan automáticamente al levantar Docker
 - **Multimedia**: el composer permite adjuntar **imágenes** (subidas a
   media-service); se renderizan en tarjetas, detalle y búsqueda.
 - **Bookmarks** y **Following**: listados adicionales.
+- **Diseño responsive**: el layout adapta tres breakpoints — escritorio
+  (3 columnas), tablet (sidebar colapsado a iconos, sidebar derecho oculto) y
+  móvil (**barra de navegación inferior**, con `safe-area` y sin scroll
+  horizontal).
 
 El acceso a tweets, usuarios y feed pasa por el **SDK generado por Smithy**;
 auth, notificaciones, búsqueda y media usan un cliente HTTP propio. Las
@@ -260,8 +268,8 @@ con configuración por entorno:
 | Database | RDS PostgreSQL (t3.micro beta → t3.medium prod) |
 | Cache | ElastiCache Redis (t3.micro beta → t3.medium prod) |
 | Messaging | Colas SQS (tweet-created FIFO, like, follow, index) + topic SNS |
-| Search | Dominio OpenSearch (deshabilitado en beta) |
-| Storage | Bucket S3 para media |
+| Search | Dominio OpenSearch (habilitado en beta: `t3.small.search`) |
+| Storage | Bucket S3 (lectura pública) para media |
 | Gateway | Application Load Balancer (internet-facing) |
 | ECS | Clúster ECS Fargate, 1 servicio por microservicio, ruteo del ALB, roles IAM por tarea |
 | CDN | CloudFront + origen S3 |
@@ -274,12 +282,18 @@ con configuración por entorno:
 | NAT Gateways | 1 | 1 | 2 |
 | Tareas por servicio | 1 | 1 | 2 |
 | RDS / Redis | t3.micro | t3.small | t3.medium |
-| OpenSearch | **deshabilitado** | t3.medium.search | m5.large.search |
+| OpenSearch | **t3.small.search** | t3.medium.search | m5.large.search |
 | Deletion protection | no | sí | sí |
 
-Beta es **HTTP-only** (ALB :80, sin ACM) y omite OpenSearch + search-service,
-con un costo objetivo de **~$136/mes**. `npx cdk synth --context env=beta`
-genera las plantillas sin desplegar.
+Beta es **HTTP-only** (ALB :80, sin ACM) e **incluye OpenSearch + search-service**
+(~$25/mes adicionales sobre los ~$136/mes de recursos base). Está **desplegado y
+funcionando end-to-end en AWS** (us-east-2): el despliegue se automatiza con
+`scripts/deploy-beta.sh personal` (infra + imágenes), `scripts/bootstrap-beta.sh`
+(esquema de Keyspaces) y `scripts/deploy-web.sh` (SPA → S3 → CloudFront) — ver
+`scripts/README.md` y el runbook `docs/runbooks/aws-deploy.md`, que documenta cada
+incompatibilidad real de Amazon Keyspaces, el SSL de RDS, el guard FIFO de
+SNS/SQS, la firma SigV4 de OpenSearch y el stack CloudFront. `npx cdk synth
+--context env=beta` genera las plantillas sin desplegar.
 
 ### Decisiones de arquitectura (ADRs)
 
@@ -339,19 +353,31 @@ npm run generate                         # regenera sdk-client + sdk-server desd
 
 ## 11. Estado actual y próximos pasos
 
-**Completado**: 8 microservicios funcionales en local, SPA completa,
+**Completado**: 8 microservicios funcionales, SPA completa y responsive,
 contrato Smithy generando cliente + servidor + OpenAPI, mensajería híbrida,
-11 stacks CDK que sintetizan correctamente, suite de tests en verde.
-**Fase 1** cerrada (incl. retweets y búsqueda de usuarios). De **Fase 2**:
-notificaciones en tiempo real (WebSocket) y subida de imágenes (media-service)
-implementadas; el feed con ML, analytics, DMs, multi-región y GraphQL quedan
-fuera de alcance / pendientes.
+11 stacks CDK **desplegados y funcionando end-to-end en el entorno beta de AWS**
+(auth, tweets, feed, perfiles, follows, media, notificaciones en tiempo real y
+búsqueda de tweets y usuarios), suite de tests en verde. **Fase 1** cerrada
+(incl. retweets y búsqueda de usuarios). De **Fase 2**: notificaciones en tiempo
+real (WebSocket) y subida de imágenes (media-service) implementadas; el feed con
+ML, analytics, DMs, multi-región y GraphQL quedan fuera de alcance / pendientes.
+
+Llevar la migración a producción (de local → AWS) sacó a la luz, y se
+corrigieron, varias incompatibilidades reales que el stack local nunca muestra:
+batches `LOGGED`/consistencia `LOCAL_ONE`/`SELECT COUNT(*)` en Amazon Keyspaces,
+`rds.force_ssl` en RDS, parámetros FIFO rechazados por colas SQS estándar, firma
+**SigV4** para OpenSearch, y el arranque concurrente de los consumidores SQS
+(un `await` secuencial dejaba sin iniciar el consumidor del índice de usuarios).
+Todas documentadas en `docs/runbooks/aws-deploy.md`.
 
 **Próximos pasos**:
 
-1. Despliegue del entorno **beta** en AWS (`cdk deploy`) y smoke tests
-   contra el ALB.
+1. **HTTPS en beta**: hoy el ALB es HTTP-only (sin ACM); añadir certificado +
+   redirección 80→443 (gamma/prod ya lo contemplan).
 2. Activar **Cognito** en auth-service (la rama local ya imita su payload) y
    evaluar federación SAML vía Hosted UI.
 3. Extender el SSDK al resto de servicios modelados (tweet, feed) — hoy usan
    solo los tipos de contrato.
+4. **Backfill de búsqueda**: la indexación solo procesa eventos posteriores al
+   despliegue; existe `POST /v1/users/reindex` para reindexar usuarios, falta el
+   equivalente para tweets históricos.
