@@ -48,6 +48,8 @@ export const SQS_QUEUES = {
   FOLLOW_EVENT:   'xcloud-follow-event',    // user.followed (user -> notification)
   USER_CREATED:   'xcloud-user-created',    // user.created (auth -> search)
   USER_UPDATED:   'xcloud-user-updated',    // user.updated (user -> search)
+  REPLY_EVENT:    'xcloud-reply-event',     // tweet.replied (tweet -> notification)
+  MENTION_EVENT:  'xcloud-mention-event',   // tweet.mentioned (tweet -> notification)
 } as const;
 
 export const APP_PREFIX = 'xcloud';

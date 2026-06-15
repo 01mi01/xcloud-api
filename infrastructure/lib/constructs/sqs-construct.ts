@@ -26,6 +26,8 @@ export class SqsConstruct extends Construct {
   public readonly followEvent:   sqs.Queue;
   public readonly userCreated:   sqs.Queue;
   public readonly userUpdated:   sqs.Queue;
+  public readonly replyEvent:    sqs.Queue;
+  public readonly mentionEvent:  sqs.Queue;
 
   constructor(scope: Construct, id: string) {
     super(scope, id);
@@ -55,6 +57,9 @@ export class SqsConstruct extends Construct {
     this.followEvent = this.makeQueue(SQS_QUEUES.FOLLOW_EVENT);
     this.userCreated = this.makeQueue(SQS_QUEUES.USER_CREATED);
     this.userUpdated = this.makeQueue(SQS_QUEUES.USER_UPDATED);
+    // tweet.replied / tweet.mentioned — 1:1 (tweet-service -> notification-service).
+    this.replyEvent   = this.makeQueue(SQS_QUEUES.REPLY_EVENT);
+    this.mentionEvent = this.makeQueue(SQS_QUEUES.MENTION_EVENT);
 
     new ssm.StringParameter(this, 'tweet-created-topic-arn-param', {
       parameterName: `/xcloud/sns/${SNS_TOPICS.TWEET_CREATED}/arn`,

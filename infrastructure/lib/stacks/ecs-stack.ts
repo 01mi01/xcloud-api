@@ -155,12 +155,14 @@ export class EcsStack extends cdk.Stack {
         TWEET_CREATED_TOPIC_ARN:   sqs.tweetCreatedTopic.topicArn,
         TWEET_RETWEETED_TOPIC_ARN: sqs.tweetRetweetedTopic.topicArn,
         LIKE_EVENT_QUEUE_URL:      sqs.likeEvent.queueUrl,
+        REPLY_EVENT_QUEUE_URL:     sqs.replyEvent.queueUrl,
+        MENTION_EVENT_QUEUE_URL:   sqs.mentionEvent.queueUrl,
         AWS_REGION:                this.region,
       },
       taskPolicies: [
         snsPublish(sqs.tweetCreatedTopic.topicArn),
         snsPublish(sqs.tweetRetweetedTopic.topicArn),
-        ...sqsAccess([sqs.likeEvent]),
+        ...sqsAccess([sqs.likeEvent, sqs.replyEvent, sqs.mentionEvent]),
         new iam.PolicyStatement({ actions: ['cassandra:*'], resources: ['*'] }),
       ],
       desiredCount: envConfig.taskCount,
@@ -261,13 +263,15 @@ export class EcsStack extends cdk.Stack {
         LIKE_EVENT_QUEUE_URL:     sqs.likeEvent.queueUrl,
         FOLLOW_EVENT_QUEUE_URL:   sqs.followEvent.queueUrl,
         NOTIFY_RETWEET_QUEUE_URL: sqs.notifyRetweet.queueUrl,
+        REPLY_EVENT_QUEUE_URL:    sqs.replyEvent.queueUrl,
+        MENTION_EVENT_QUEUE_URL:  sqs.mentionEvent.queueUrl,
         AWS_REGION:               this.region,
       },
       secrets: {
         DB_USER:     ecs.Secret.fromSecretsManager(database.rds.credentials, 'username'),
         DB_PASSWORD: ecs.Secret.fromSecretsManager(database.rds.credentials, 'password'),
       },
-      taskPolicies: sqsAccess([sqs.likeEvent, sqs.followEvent, sqs.notifyRetweet]),
+      taskPolicies: sqsAccess([sqs.likeEvent, sqs.followEvent, sqs.notifyRetweet, sqs.replyEvent, sqs.mentionEvent]),
       desiredCount: envConfig.taskCount,
     });
     rdsIngressFrom(notificationSvc, 'notification');
