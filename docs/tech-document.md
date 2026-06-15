@@ -1,10 +1,82 @@
 # X(dot)com - Diseño Técnico
 
-### Estado del documento: En revisión
+### Estado del documento: En revisión  ·  *(implementación: beta desplegado en AWS — ver «[Estado de implementación](#estado-de-implementación-beta--junio-2026)» más abajo)*
 
 ## Resumen
 
 El presente proyecto consiste en el diseño y desarrollo de una plataforma red social en la nube, inspirada en la arquitectura de X. Esta permitira a los usuarios publicar mensajes cortos, seguir a otros usuarios, interactuar mediante likes y retweets, y consumir un feed personalizado. Los clientes objetivo se clasifican en tres categorias: Usuarios finales, personas que buscan una plataforma de comunicación en tiempo real, visualización de contenido y networking social. Creadores de contenido, quienes son personas o marcas que necesitan difundir información, noticias o entretenimiento a una audiencia diaria. Desarrolladores terceros, donde equipos consumen la API pública para construir integraciones, bots o aplicaciones derivadas. Esta plataforma resuelve la necesidad de comunicación masiva y en tiempo real con baja lantencia, alta disponibilidad y escalabilidad global, garantizando que los mensajes lleguen a millones de usuarios de forma instantánea y confiable.
+
+## Estado de implementación (beta — junio 2026)
+
+> Este documento describe el **diseño objetivo** (arquitectura de producción a
+> escala). Esta sección registra qué está **realmente implementado y desplegado**
+> hoy en el entorno **beta** (AWS `us-east-2`). El resto del documento se conserva
+> como intención de diseño; donde la implementación difiere, se indica en la tabla
+> de *deltas* al final de esta sección.
+
+### Alcance
+
+**Fase 1 — MVP: ✅ completo (7/7).** Registro/autenticación/perfiles (handle
+único, bio, avatar), tweets (≤280) con likes y retweets, feed cronológico con
+paginación por cursor, follow/unfollow, búsqueda de usuarios y hashtags/keywords,
+API REST `/v1`, e infraestructura cloud single-region con autoscaling de ECS.
+Todo desplegado y funcionando end-to-end en beta.
+
+**Fase 2 — parcial (~1.5/7):**
+
+| Funcionalidad | Estado |
+|---|---|
+| Notificaciones en tiempo real (WebSocket) | ✅ implementado |
+| Contenido multimedia | ⚠️ **imágenes sí; video no** |
+| Feed con ML / recomendación | ❌ pendiente |
+| Mensajería directa (DMs) | ❌ pendiente |
+| Despliegue multi-región | ❌ pendiente (solo beta `us-east-2`; gamma/prod configurados, no desplegados) |
+| API GraphQL | ❌ pendiente |
+| Panel de analytics | ❌ pendiente |
+
+**Fuera de alcance:** sin cambios — todo correctamente fuera (ads, KYC/blue check,
+moderación con IA, apps nativas, cross-posting).
+
+### Requerimientos funcionales (§1.1)
+
+| # | Requerimiento | Estado |
+|---|---|---|
+| 1 | Cuenta, autenticación y perfil (nombre, bio, foto, handle único) | ✅ |
+| 2 | Posts ≤280 con texto, hashtags **y menciones** | ⚠️ texto + hashtags ✅; **@menciones no** (solo scaffolding en la UI) |
+| 3 | Follow/unfollow y feed de seguidos | ✅ |
+| 4 | Likes, retweets **y respuestas** | ✅ |
+| 5 | Búsqueda por hashtags, keywords y usuarios | ✅ |
+
+**No funcionales (§1.2):** son objetivos de diseño, no medidos/validados.
+*Implementado:* bcrypt (10 rounds) y cifrado en reposo (RDS/Keyspaces/S3/SQS).
+*Parcial:* TLS en tránsito — CloudFront da HTTPS al viewer, pero el origen ALB es
+HTTP en beta (falta ACM). *No validado/implementado:* 99.99% uptime, p99<200ms,
+10M DAU, multi-región, RPO<1min, cumplimiento GDPR/CCPA.
+
+### Diseño objetivo vs. implementación actual (deltas)
+
+El resto del documento describe el diseño de producción; estas filas son los
+puntos donde la implementación beta difiere a propósito (alcance MVP) o donde el
+texto ya no refleja lo construido:
+
+| Área | Diseño (este documento) | Implementación actual (beta) |
+|---|---|---|
+| Comunicación inter-servicio | gRPC (§3.5, §5.4, timing §5.3) | **HTTP/axios** vía el ALB (hidratación feed→tweet); las demás RPC internas no existen |
+| WebSocket | Amazon API Gateway WebSocket (§6.2) | Servidor **`ws`** nativo en notification-service tras ALB/CloudFront (con heartbeat + reconexión del cliente) |
+| Mensajería | colas **FIFO** `tweet-created.fifo` (§5.3, §6.2) | SNS **estándar** → 2 colas SQS **estándar** (con *guard* FIFO en `@xcloud/shared`) |
+| Búsqueda | OpenSearch 3× `r6g.large`, autoscaling (§6.2) | 1× **`t3.small.search`**, sin autoscaling; cliente **`@opensearch-project` con firma SigV4** (no `@elastic/elasticsearch`) |
+| Migraciones de schema | **Flyway** versionado (§6.1, §6.7) | Auto-creación al arrancar (`ensurePostgresSchema`) + `cassandra-init.cql` + `bootstrap-keyspaces.ts` |
+| CI/CD | GitHub Actions → deploy auto beta/gamma/prod, AppConfig, Slack (§6.7) | **Manual** vía `scripts/deploy-beta.sh` / `build-push-images.sh` / `deploy-web.sh`; solo beta |
+| Borde / gateway | API Gateway + ALB (§5.3, §6.2) | **Solo ALB** (+ CloudFront para el SPA y `/api/*`) |
+| Observabilidad | X-Ray + PagerDuty (§6.3) | CloudWatch Container Insights + alarmas por **email** (sin X-Ray ni PagerDuty) |
+| Seguridad de borde | WAF + TLS 1.3 en todos los endpoints (§6.4) | beta **HTTP-only** (sin WAF, sin ACM) |
+| Autenticación | Cognito Hosted UI / OIDC (§6.4.2–3) | **JWT local (HS256)** que imita el payload de Cognito; el stack Cognito existe pero no está activo |
+| AuthZ por scopes | modelo RBAC con scopes (§6.4.1) | el JWT lleva `cognito:groups`, pero las rutas solo validan `verifyToken` (sin enforcement por scope) |
+| Región primaria | `us-east-1` (§6.8) | beta desplegado en **`us-east-2`** |
+
+Detalle operativo del despliegue y cada incompatibilidad real corregida (Keyspaces,
+SSL de RDS, *guard* FIFO de SNS/SQS, SigV4 de OpenSearch, arranque concurrente de
+consumidores SQS): [`docs/runbooks/aws-deploy.md`](runbooks/aws-deploy.md).
 
 ## Supuestos
 
@@ -270,6 +342,10 @@ errors:
 
 ### 3.5 APIs internas (gRPC - entre microservicios)
 
+> **Implementación (beta):** la única comunicación inter-servicio que existe hoy
+> (hidratación feed→tweet) usa **HTTP** a través del ALB, no gRPC; las RPC de
+> abajo son diseño objetivo, no implementadas.
+
 ```bash
 // Feed Service → Tweet Service
 rpc GetTweetsByIds(TweetIdsRequest) returns (TweetsResponse)
@@ -466,7 +542,7 @@ flowchart TD
 
 **Tweet Service** — Creación, lectura y borrado de tweets. Persiste en Cassandra por su modelo de escritura intensiva y necesidad de escalado horizontal. Publica eventos a las colas SQS (`tweet-created.fifo`, `tweet-index`) tras cada operación relevante.
 
-**Feed Service** — Construye y sirve el feed del usuario. Primero consulta Redis (feed pre-computado como lista de tweetIds). En cache miss, reconstruye desde TweetDB y re-cachea. Hidrata los tweetIds via gRPC al Tweet Service.
+**Feed Service** — Construye y sirve el feed del usuario. Primero consulta Redis (feed pre-computado como lista de tweetIds). En cache miss, reconstruye desde TweetDB y re-cachea. Hidrata los tweetIds via gRPC al Tweet Service. *(beta: la hidratación es HTTP a través del ALB.)*
 
 **Fan-out Service** — Consume mensajes de la cola SQS `xcloud-tweet-created.fifo`. Obtiene la lista de followers del autor desde User DB y escribe el tweetId en el feed cache de cada follower en Redis (fan-out on write). Para usuarios con millones de followers (celebrities), aplica fan-out on read en su lugar.
 
@@ -623,10 +699,10 @@ erDiagram
 | Tweet DB | Amazon Keyspaces | On-demand capacity, escala automática |
 | User DB | Amazon RDS PostgreSQL | Multi-AZ, Read Replicas para lecturas |
 | Feed Cache | Amazon ElastiCache (Redis Cluster) | Sharding por userId, cluster mode ON |
-| Message Queue | Amazon SQS | Escala nativa sin gestión de brokers; DLQ por cola, FIFO para `tweet-created` |
+| Message Queue | Amazon SQS | Escala nativa sin gestión de brokers; DLQ por cola, FIFO para `tweet-created` *(beta: SNS + colas estándar, no FIFO)* |
 | Object Storage | Amazon S3 | Escala nativa, sin límite práctico |
 | Search | Amazon OpenSearch Service | Auto-scaling de data nodes |
-| WebSocket | Amazon API Gateway WebSocket | Escala nativa por conexiones |
+| WebSocket | Amazon API Gateway WebSocket *(beta: servidor `ws` nativo tras el ALB)* | Escala nativa por conexiones |
 | CDN | Amazon CloudFront | Distribución global, edge caching |
 
 ---
