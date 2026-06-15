@@ -1,14 +1,6 @@
-import { useState, useEffect } from "react";
-import * as notificationsApi from "../api/notifications";
-import { connectNotifications } from "../api/notifications-ws";
-import { getUserById } from "../api/users";
-type Notification = notificationsApi.Notification & {
-  actorName: string;
-  actorHandle: string;
-  excerpt?: string;
-  read: boolean;
-  createdAt: string;
-};
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useNotifications } from "../context/NotificationsContext";
 import LeftSidebar from "../components/layout/LeftSidebar";
 import RightSidebar from "../components/layout/RightSidebar";
 import Avatar from "../components/common/Avatar";
@@ -59,98 +51,25 @@ function NotifIcon({ type }: { type: string }) {
 }
 
 // Human-readable label per notification type
-function notifText(type: string, actorName: string, _excerpt?: string): string {
-  if (type === "like") return `${actorName} liked your tweet`;
-  if (type === "retweet") return `${actorName} retweeted your tweet`;
-  if (type === "follow") return `${actorName} followed you`;
-  if (type === "reply") return `${actorName} replied to your tweet`;
-  if (type === "mention") return `${actorName} mentioned you`;
-  return `${actorName} interacted with you`;
-}
-
-// Cache de perfiles de actor (userId → {displayName, handle}) para no refetchear.
-const actorCache = new Map<string, { displayName: string; handle: string }>();
-
-async function resolveActor(actorId: string): Promise<{ displayName: string; handle: string }> {
-  if (!actorId) return { displayName: "Alguien", handle: "" };
-  const cached = actorCache.get(actorId);
-  if (cached) return cached;
-  try {
-    const u = await getUserById(actorId);
-    const info = { displayName: u.displayName || u.handle, handle: u.handle };
-    actorCache.set(actorId, info);
-    return info;
-  } catch {
-    return { displayName: "Alguien", handle: "" };
-  }
+function notifText(type: string): string {
+  if (type === "like") return `liked your tweet`;
+  if (type === "retweet") return `retweeted your tweet`;
+  if (type === "follow") return `followed you`;
+  if (type === "reply") return `replied to your tweet`;
+  if (type === "mention") return `mentioned you`;
+  return `interacted with you`;
 }
 
 function Notifications() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>("all");
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-
-useEffect(() => {
-  let cancelled = false;
-  notificationsApi
-    .listNotifications()
-    .then(async (res) => {
-      // Resuelve los nombres de los actores en paralelo (con caché).
-      const enriched = await Promise.all(
-        res.notifications.map(async (n) => {
-          const actor = await resolveActor(n.actorId);
-          return {
-            ...n,
-            actorName: actor.displayName,
-            actorHandle: actor.handle,
-            excerpt: n.targetId ?? undefined,
-          };
-        })
-      );
-      if (!cancelled) setNotifications(enriched);
-    })
-    .catch(() => { if (!cancelled) setNotifications([]); });
-  return () => { cancelled = true; };
-}, []);
-
-// Real-time: prepend notifications pushed over the WebSocket as they arrive.
-useEffect(() => {
-  const disconnect = connectNotifications(async (push) => {
-    const actor = await resolveActor(push.actor ?? "");
-    setNotifications((prev) => {
-      if (push.notifId && prev.some((n) => n.id === push.notifId)) return prev; // dedupe
-      const incoming: Notification = {
-        id: push.notifId ?? `ws-${Date.now()}`,
-        type: push.type,
-        actorId: push.actor ?? "",
-        targetId: push.tweetId ?? null,
-        read: false,
-        createdAt: new Date().toISOString(),
-        actorName: actor.displayName,
-        actorHandle: actor.handle,
-        excerpt: push.tweetId ?? undefined,
-      };
-      return [incoming, ...prev];
-    });
-  });
-  return disconnect;
-}, []);
-
-  const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  };
-
-  const markRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
-  };
+  // Live list shared with the sidebar badge; seeded from REST + WebSocket push.
+  const { notifications, unreadCount, actorProfiles, tweetPreviews, markRead, markAllRead } = useNotifications();
 
   const filtered =
     activeTab === "mentions"
       ? notifications.filter((n) => n.type === "mention")
       : notifications;
-
-  const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
     <div className={styles.layout}>
@@ -189,36 +108,51 @@ useEffect(() => {
           <p className={styles.empty}>No notifications here.</p>
         )}
 
-        {filtered.map((notif) => (
-          <div
-            key={notif.id}
-            className={`${styles.notifRow} ${!notif.read ? styles.unread : ""}`}
-            onClick={() => markRead(notif.id)}
-          >
-            {/* Unread dot */}
-            {!notif.read && <span className={styles.dot} />}
+        {filtered.map((notif) => {
+          const actor = actorProfiles[notif.actorId];
+          const actorName = actor?.displayName || actor?.handle || notif.actorId;
+          const actorHandle = actor?.handle;
+          // Show the tweet's content for tweet-related notifications (not the UUID).
+          const excerpt = notif.targetId ? tweetPreviews[notif.targetId] : undefined;
 
-            {/* Type icon */}
-            <div className={styles.iconCol}>
-              <NotifIcon type={notif.type} />
-            </div>
+          const handleClick = () => {
+            markRead(notif.id);
+            if (notif.targetId) navigate(`/tweet/${notif.targetId}`);
+            else if (actorHandle) navigate(`/profile/${actorHandle}`);
+          };
 
-            {/* Content */}
-            <div className={styles.content}>
-              <Avatar size={36} />
-              <div className={styles.text}>
-                <span className={styles.actorName}>{notif.actorName}</span>
-                <span className={styles.action}>
-                  {" "}{notifText(notif.type, "").replace(notif.actorName, "").trim()}
-                </span>
-                {notif.excerpt && (
-                  <p className={styles.excerpt}>{notif.excerpt}</p>
-                )}
-                <span className={styles.time}>{formatTime(notif.createdAt)}</span>
+          return (
+            <div
+              key={notif.id}
+              className={`${styles.notifRow} ${!notif.read ? styles.unread : ""}`}
+              onClick={handleClick}
+            >
+              {/* Unread dot */}
+              {!notif.read && <span className={styles.dot} />}
+
+              {/* Type icon */}
+              <div className={styles.iconCol}>
+                <NotifIcon type={notif.type} />
+              </div>
+
+              {/* Content */}
+              <div className={styles.content}>
+                <Avatar size={36} src={actor?.avatarUrl || undefined} />
+                <div className={styles.text}>
+                  <span className={styles.actorName}>{actorName}</span>
+                  {actorHandle && (
+                    <span style={{ color: "var(--color-text-secondary)" }}> @{actorHandle}</span>
+                  )}
+                  <span className={styles.action}> {notifText(notif.type)}</span>
+                  {excerpt && (
+                    <p className={styles.excerpt}>{excerpt}</p>
+                  )}
+                  <span className={styles.time}>{formatTime(notif.createdAt)}</span>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
       </main>
 

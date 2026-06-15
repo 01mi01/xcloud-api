@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import * as tweetsApi from "../../api/tweets";
+import { uploadImage } from "../../api/media";
 import { ApiError } from "../../api/client";
 import type { RawTweet } from "../../types";
 import Avatar from "../common/Avatar";
@@ -16,7 +17,9 @@ interface Props {
 
 function TweetComposer({ onTweetCreated }: Props) {
   const [content, setContent] = useState("");
+  // Holds the uploaded media URLs (returned by media-service), sent as mediaUrls.
   const [images, setImages] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,11 +30,14 @@ function TweetComposer({ onTweetCreated }: Props) {
   const isEmpty = content.trim().length === 0 && images.length === 0;
 
   const handlePost = async () => {
-    if (isEmpty || isOverLimit || submitting) return;
+    if (isEmpty || isOverLimit || submitting || uploading) return;
     setSubmitting(true);
     setError(null);
     try {
-      const { tweet } = await tweetsApi.createTweet({ content });
+      const { tweet } = await tweetsApi.createTweet({
+        content,
+        mediaUrls: images.length ? images : undefined,
+      });
       onTweetCreated?.(tweet);
       setContent("");
       setImages([]);
@@ -49,16 +55,22 @@ function TweetComposer({ onTweetCreated }: Props) {
     setShowEmoji(false);
   };
 
-  const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        setImages((prev) => [...prev, ev.target?.result as string]);
-      };
-      reader.readAsDataURL(file);
-    });
     e.target.value = "";
+    if (files.length === 0) return;
+    setError(null);
+    setUploading(true);
+    try {
+      for (const file of files) {
+        const url = await uploadImage(file);
+        setImages((prev) => [...prev, url]);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Image upload failed");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const removeImage = (index: number) => {
@@ -132,8 +144,8 @@ function TweetComposer({ onTweetCreated }: Props) {
                   {remaining}
                 </span>
               )}
-              <button className={styles.postBtn} onClick={handlePost} disabled={isEmpty || isOverLimit || submitting}>
-                {submitting ? "Posting…" : "Post"}
+              <button className={styles.postBtn} onClick={handlePost} disabled={isEmpty || isOverLimit || submitting || uploading}>
+                {uploading ? "Uploading…" : submitting ? "Posting…" : "Post"}
               </button>
             </div>
         </div>

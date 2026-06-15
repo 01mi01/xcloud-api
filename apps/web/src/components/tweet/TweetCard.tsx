@@ -98,15 +98,17 @@ function TweetCard({ tweet, onDeleted, onReplyCreated }: Props) {
   const handleRetweet = async (e: React.MouseEvent) => {
     e.stopPropagation();
     const wasRetweeted = retweeted;
+    // Optimistic update
     setRetweeted(!wasRetweeted);
-    setRetweetCount((prev) => wasRetweeted ? prev - 1 : prev + 1);
+    setRetweetCount((prev) => (wasRetweeted ? prev - 1 : prev + 1));
     try {
       if (wasRetweeted) await tweetsApi.unretweetTweet(tweet.tweetId);
       else await tweetsApi.retweetTweet(tweet.tweetId);
     } catch (err) {
+      // Revert on failure
       console.error("Retweet error:", err);
       setRetweeted(wasRetweeted);
-      setRetweetCount((prev) => wasRetweeted ? prev + 1 : prev - 1);
+      setRetweetCount((prev) => (wasRetweeted ? prev + 1 : prev - 1));
     }
   };
 
@@ -136,7 +138,7 @@ function TweetCard({ tweet, onDeleted, onReplyCreated }: Props) {
       onClick={() => !editing && navigate(`/tweet/${tweet.tweetId}`)}
     >
       <div className={styles.avatarCol}>
-        <Avatar size={40} />
+        <Avatar size={40} src={tweet.author.avatarUrl || undefined} />
       </div>
 
       <div className={styles.content}>
@@ -225,6 +227,35 @@ function TweetCard({ tweet, onDeleted, onReplyCreated }: Props) {
           </div>
         ) : (
           <p className={styles.text}>{displayContent}</p>
+        )}
+
+        {tweet.mediaUrls && tweet.mediaUrls.length > 0 && (
+          <div
+            style={{
+              marginTop: 8,
+              display: "grid",
+              gap: 4,
+              gridTemplateColumns: tweet.mediaUrls.length > 1 ? "1fr 1fr" : "1fr",
+              borderRadius: 16,
+              overflow: "hidden",
+            }}
+          >
+            {tweet.mediaUrls.map((url, i) => (
+              <img
+                key={i}
+                src={url}
+                alt=""
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  width: "100%",
+                  maxHeight: 320,
+                  objectFit: "cover",
+                  borderRadius: 12,
+                  border: "1px solid var(--color-border)",
+                }}
+              />
+            ))}
+          </div>
         )}
 
         <div className={styles.actions}>

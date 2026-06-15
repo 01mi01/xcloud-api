@@ -94,6 +94,12 @@ export class MicroserviceConstruct extends Construct {
       memoryLimitMiB: memoryMiB,
       executionRole,
       taskRole: this.taskRole,
+      // ARM64 (Graviton): images build natively + fast on Apple Silicon, and ARM
+      // Fargate is a bit cheaper. build-push-images.sh builds --platform linux/arm64.
+      runtimePlatform: {
+        cpuArchitecture: ecs.CpuArchitecture.ARM64,
+        operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
+      },
     });
 
     taskDef.addContainer('app', {
@@ -109,13 +115,8 @@ export class MicroserviceConstruct extends Construct {
         logGroup: this.logGroup,
         streamPrefix: serviceName,
       }),
-      healthCheck: {
-        command:     ['CMD-SHELL', `curl -f http://localhost:${containerPort}/health || exit 1`],
-        interval:    cdk.Duration.seconds(30),
-        timeout:     cdk.Duration.seconds(5),
-        retries:     3,
-        startPeriod: cdk.Duration.seconds(60),
-      },
+      // No container-level health check: node:20-alpine has no curl, and the ALB
+      // target group already health-checks GET /health over HTTP.
     });
 
     // ── Fargate service ────────────────────────────────────────────────

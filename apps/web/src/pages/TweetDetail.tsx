@@ -50,6 +50,7 @@ function TweetDetail() {
   const { identity } = useAuth();
 
   const [tweet, setTweet] = useState<Tweet | null>(null);
+  const [parent, setParent] = useState<Tweet | null>(null);
   const [replies, setReplies] = useState<Tweet[]>([]);
   const [loading, setLoading] = useState(true);
   const [replyContent, setReplyContent] = useState("");
@@ -61,6 +62,7 @@ function TweetDetail() {
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -71,7 +73,7 @@ function TweetDetail() {
     return () => document.removeEventListener("mousedown", handler);
   }, [menuOpen]);
 
-  // Estados de acciones
+  // Per-viewer action state for the main tweet, seeded from the loaded tweet.
   const [liked, setLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(0);
   const [retweeted, setRetweeted] = useState(false);
@@ -91,14 +93,19 @@ function TweetDetail() {
     }
   }, [identity?.userId]);
 
+  const focusReply = () => textareaRef.current?.focus();
+
   useEffect(() => {
     if (!tweetId) return;
+    let cancelled = false;
     setLoading(true);
+    setParent(null);
     tweetsApi
       .getTweet(tweetId)
       .then(async (res) => {
         const hydrated = await hydrateTweets([res.tweet], identity?.userId);
         const t = hydrated[0] ?? null;
+        if (cancelled) return;
         setTweet(t);
         if (t) {
           setLiked(t.liked);
@@ -107,11 +114,21 @@ function TweetDetail() {
           setRetweetCount(t.retweetCount);
           setBookmarked(t.bookmarked ?? isBookmarked(t.tweetId));
           setEditContent(t.content);
+
+          // If this tweet is a reply, load the parent for context.
+          if (t.replyToTweetId) {
+            tweetsApi
+              .getTweet(t.replyToTweetId)
+              .then((p) => hydrateTweets([p.tweet], identity?.userId))
+              .then((ph) => { if (!cancelled) setParent(ph[0] ?? null); })
+              .catch(() => { /* parent may be deleted */ });
+          }
         }
         await loadReplies(tweetId);
       })
-      .catch(() => setTweet(null))
-      .finally(() => setLoading(false));
+      .catch(() => { if (!cancelled) setTweet(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [tweetId, identity?.userId, loadReplies]);
 
   const handleLike = async () => {
@@ -153,12 +170,17 @@ function TweetDetail() {
     if (!tweet || isEmpty || submitting) return;
     setSubmitting(true);
     try {
-      await tweetsApi.createTweet({ content: replyContent, replyToTweetId: tweet.tweetId });
+      // Persist the reply, then show the real hydrated tweet at the top.
+      const { tweet: raw } = await tweetsApi.createTweet({
+        content: replyContent,
+        replyToTweetId: tweet.tweetId,
+      });
+      const [hydrated] = await hydrateTweets([raw], identity?.userId);
+      setReplies((prev) => [hydrated, ...prev]);
+      setTweet((t) => (t ? { ...t, repliesCount: t.repliesCount + 1 } : t));
       setReplyContent("");
-      setTweet((t) => t ? { ...t, repliesCount: t.repliesCount + 1 } : t);
-      await loadReplies(tweet.tweetId);
     } catch {
-      // silencioso
+      /* surfaced minimally; keep the composer content for retry */
     } finally {
       setSubmitting(false);
     }
@@ -204,11 +226,31 @@ function TweetDetail() {
           <span className={styles.topBarTitle}>Post</span>
         </div>
 
+        {/* Parent tweet context — shown when viewing a reply */}
+        {parent && (
+          <div
+            onClick={() => navigate(`/tweet/${parent.tweetId}`)}
+            style={{ padding: "12px 16px 4px", cursor: "pointer" }}
+          >
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <Avatar size={24} src={parent.author.avatarUrl || undefined} />
+              <span style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>{parent.author.displayName}</span>
+              <span style={{ color: "var(--color-text-secondary)" }}>@{parent.author.handle}</span>
+            </div>
+            <p style={{ margin: "4px 0 0 32px", color: "var(--color-text-primary)" }}>{parent.content}</p>
+            <div style={{ margin: "8px 0 0 11px", width: 2, height: 16, background: "var(--color-border)" }} />
+          </div>
+        )}
+
         {/* Main tweet — expanded view */}
         <div className={styles.mainTweet}>
 
-          <div className={styles.authorRow}>
-            <Avatar size={48} />
+          <div
+            className={styles.authorRow}
+            style={{ cursor: "pointer" }}
+            onClick={() => navigate(`/profile/${tweet.author.handle}`)}
+          >
+            <Avatar size={48} src={tweet.author.avatarUrl || undefined} />
             <div className={styles.authorInfo}>
               <span className={styles.displayName}>{tweet.author.displayName}</span>
               <span className={styles.handle}>@{tweet.author.handle}</span>
@@ -261,6 +303,13 @@ function TweetDetail() {
             )}
           </div>
 
+          {parent && (
+            <p style={{ margin: "4px 0 0", color: "var(--color-text-secondary)", fontSize: 14 }}>
+              Replying to{" "}
+              <span style={{ color: "var(--color-accent)" }}>@{parent.author.handle}</span>
+            </p>
+          )}
+
           {/* Contenido — normal o modo edición */}
           {editing ? (
             <div className={styles.editBox}>
@@ -293,13 +342,53 @@ function TweetDetail() {
             <p className={styles.content}>{tweet.content}</p>
           )}
 
+          {tweet.mediaUrls && tweet.mediaUrls.length > 0 && (
+            <div
+              style={{
+                marginTop: 12,
+                display: "grid",
+                gap: 4,
+                gridTemplateColumns: tweet.mediaUrls.length > 1 ? "1fr 1fr" : "1fr",
+                borderRadius: 16,
+                overflow: "hidden",
+              }}
+            >
+              {tweet.mediaUrls.map((url, i) => (
+                <img
+                  key={i}
+                  src={url}
+                  alt=""
+                  style={{
+                    width: "100%",
+                    maxHeight: 400,
+                    objectFit: "cover",
+                    borderRadius: 12,
+                    border: "1px solid var(--color-border)",
+                  }}
+                />
+              ))}
+            </div>
+          )}
+
           <p className={styles.timestamp}>{formatTimeFull(tweet.createdAt)}</p>
 
+          <div className={styles.stats}>
+            <span>
+              <strong>{formatCount(retweetCount)}</strong>{" "}
+              <span className={styles.statLabel}>Reposts</span>
+            </span>
+            <span>
+              <strong>{formatCount(likesCount)}</strong>{" "}
+              <span className={styles.statLabel}>Likes</span>
+            </span>
+            <span>
+              <strong>{formatCount(tweet.repliesCount)}</strong>{" "}
+              <span className={styles.statLabel}>Replies</span>
+            </span>
+          </div>
+
           <div className={styles.actions}>
-            <button
-              className={`${styles.actionBtn} ${styles.replyBtn}`}
-              onClick={() => document.querySelector("textarea")?.focus()}
-            >
+            <button className={`${styles.actionBtn} ${styles.replyBtn}`} onClick={focusReply} aria-label="Reply">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={1.75}>
                 <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
               </svg>
@@ -308,6 +397,7 @@ function TweetDetail() {
             <button
               className={`${styles.actionBtn} ${styles.retweetBtn} ${retweeted ? styles.retweeted : ""}`}
               onClick={handleRetweet}
+              aria-label="Repost"
             >
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={1.75}>
                 <path d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3" />
@@ -317,6 +407,7 @@ function TweetDetail() {
             <button
               className={`${styles.actionBtn} ${styles.likeBtn} ${liked ? styles.liked : ""}`}
               onClick={handleLike}
+              aria-label="Like"
             >
               <svg viewBox="0 0 24 24" width="20" height="20" fill={liked ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.75}>
                 <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" />
@@ -326,6 +417,7 @@ function TweetDetail() {
             <button
               className={`${styles.actionBtn} ${styles.bookmarkBtn} ${bookmarked ? styles.bookmarked : ""}`}
               onClick={handleBookmark}
+              aria-label="Bookmark"
             >
               <svg viewBox="0 0 24 24" width="20" height="20" fill={bookmarked ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.75}>
                 <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" />
@@ -340,6 +432,7 @@ function TweetDetail() {
           <Avatar size={40} />
           <div className={styles.composerRight}>
             <textarea
+              ref={textareaRef}
               className={styles.textarea}
               placeholder="Post your reply"
               value={replyContent}

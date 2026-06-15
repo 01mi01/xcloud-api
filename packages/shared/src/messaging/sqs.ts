@@ -21,11 +21,17 @@ const region = (): string => process.env.AWS_REGION || 'us-east-1';
 // straight to a single SQS queue. Env var names match the CDK outputs.
 const SNS_TOPIC_ENV: Partial<Record<EventName, string>> = {
   'tweet.created': 'TWEET_CREATED_TOPIC_ARN',
+  // Fans out to two consumers (fanout + notification) via SNS → 2 SQS queues.
+  'tweet.retweeted': 'TWEET_RETWEETED_TOPIC_ARN',
 };
 const SQS_QUEUE_ENV: Partial<Record<EventName, string>> = {
   'tweet.liked': 'LIKE_EVENT_QUEUE_URL',
   'user.followed': 'FOLLOW_EVENT_QUEUE_URL',
-  'tweet.retweeted': 'RETWEET_EVENT_QUEUE_URL',
+  // 1:1 to search-service (the only consumer), for the user search index.
+  'user.created': 'USER_CREATED_QUEUE_URL',
+  'user.updated': 'USER_UPDATED_QUEUE_URL',
+  // tweet.retweeted is routed via SNS (SNS_TOPIC_ENV above) — it fans out to
+  // fanout + notification — so it is NOT listed here. reply/mention are 1:1.
   'tweet.replied': 'REPLY_EVENT_QUEUE_URL',
   'tweet.mentioned': 'MENTION_EVENT_QUEUE_URL',
 };
@@ -42,12 +48,15 @@ export class SqsPublisher implements Publisher {
     if (topicEnv) {
       const TopicArn = process.env[topicEnv];
       if (!TopicArn) throw new Error(`Missing ${topicEnv} for event ${event}`);
+      // FIFO-only params (MessageGroupId/MessageDeduplicationId) are rejected by
+      // standard topics — only send them when the target is actually a .fifo topic.
+      const fifo = TopicArn.endsWith('.fifo');
       await this.sns.send(
         new PublishCommand({
           TopicArn,
           Message: body,
-          MessageGroupId: opts.groupId,
-          MessageDeduplicationId: opts.deduplicationId,
+          MessageGroupId: fifo ? opts.groupId : undefined,
+          MessageDeduplicationId: fifo ? opts.deduplicationId : undefined,
         }),
       );
       return;
@@ -56,12 +65,14 @@ export class SqsPublisher implements Publisher {
     const queueEnv = SQS_QUEUE_ENV[event];
     const QueueUrl = queueEnv ? process.env[queueEnv] : undefined;
     if (!QueueUrl) throw new Error(`No SQS queue configured for event ${event}`);
+    // Same FIFO guard for SQS (standard queues reject these params).
+    const fifo = QueueUrl.endsWith('.fifo');
     await this.sqs.send(
       new SendMessageCommand({
         QueueUrl,
         MessageBody: body,
-        MessageGroupId: opts.groupId,
-        MessageDeduplicationId: opts.deduplicationId,
+        MessageGroupId: fifo ? opts.groupId : undefined,
+        MessageDeduplicationId: fifo ? opts.deduplicationId : undefined,
       }),
     );
   }

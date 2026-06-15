@@ -8,16 +8,26 @@ import { SNS_TOPICS, SQS_QUEUES } from '../config/constants';
 
 /**
  * Messaging topology (hybrid: Kafka local, SQS/SNS in prod):
- *   - tweet.created  -> SNS topic, fanned out to TWO SQS queues (fanout, search)
- *   - tweet.liked    -> SQS queue (likeEvent), consumed by notification
- *   - user.followed  -> SQS queue (followEvent), consumed by notification
+ *   - tweet.created   -> SNS topic, fanned out to TWO SQS queues (fanout, search)
+ *   - tweet.retweeted -> SNS topic, fanned out to TWO SQS queues (fanout, notification)
+ *   - tweet.liked     -> SQS queue (likeEvent),    consumed by notification
+ *   - user.followed   -> SQS queue (followEvent),  consumed by notification
+ *   - user.created    -> SQS queue (userCreated),  consumed by search
+ *   - user.updated    -> SQS queue (userUpdated),  consumed by search
  */
 export class SqsConstruct extends Construct {
-  public readonly tweetCreatedTopic: sns.Topic;
-  public readonly fanoutQueue:  sqs.Queue;
-  public readonly tweetIndex:   sqs.Queue;
-  public readonly likeEvent:    sqs.Queue;
-  public readonly followEvent:  sqs.Queue;
+  public readonly tweetCreatedTopic:   sns.Topic;
+  public readonly tweetRetweetedTopic: sns.Topic;
+  public readonly fanoutQueue:   sqs.Queue;
+  public readonly tweetIndex:    sqs.Queue;
+  public readonly fanoutRetweet: sqs.Queue;
+  public readonly notifyRetweet: sqs.Queue;
+  public readonly likeEvent:     sqs.Queue;
+  public readonly followEvent:   sqs.Queue;
+  public readonly userCreated:   sqs.Queue;
+  public readonly userUpdated:   sqs.Queue;
+  public readonly replyEvent:    sqs.Queue;
+  public readonly mentionEvent:  sqs.Queue;
 
   constructor(scope: Construct, id: string) {
     super(scope, id);
@@ -32,13 +42,32 @@ export class SqsConstruct extends Construct {
     this.tweetCreatedTopic.addSubscription(new subs.SqsSubscription(this.fanoutQueue));
     this.tweetCreatedTopic.addSubscription(new subs.SqsSubscription(this.tweetIndex));
 
+    // ── tweet.retweeted fan-out (SNS -> 2x SQS) ────────────────────────
+    this.tweetRetweetedTopic = new sns.Topic(this, 'TweetRetweetedTopic', {
+      topicName: SNS_TOPICS.TWEET_RETWEETED,
+    });
+
+    this.fanoutRetweet = this.makeQueue(SQS_QUEUES.FANOUT_RETWEET);
+    this.notifyRetweet = this.makeQueue(SQS_QUEUES.NOTIFY_RETWEET);
+    this.tweetRetweetedTopic.addSubscription(new subs.SqsSubscription(this.fanoutRetweet));
+    this.tweetRetweetedTopic.addSubscription(new subs.SqsSubscription(this.notifyRetweet));
+
     // ── 1:1 event queues ───────────────────────────────────────────────
     this.likeEvent   = this.makeQueue(SQS_QUEUES.LIKE_EVENT);
     this.followEvent = this.makeQueue(SQS_QUEUES.FOLLOW_EVENT);
+    this.userCreated = this.makeQueue(SQS_QUEUES.USER_CREATED);
+    this.userUpdated = this.makeQueue(SQS_QUEUES.USER_UPDATED);
+    // tweet.replied / tweet.mentioned — 1:1 (tweet-service -> notification-service).
+    this.replyEvent   = this.makeQueue(SQS_QUEUES.REPLY_EVENT);
+    this.mentionEvent = this.makeQueue(SQS_QUEUES.MENTION_EVENT);
 
     new ssm.StringParameter(this, 'tweet-created-topic-arn-param', {
       parameterName: `/xcloud/sns/${SNS_TOPICS.TWEET_CREATED}/arn`,
       stringValue:   this.tweetCreatedTopic.topicArn,
+    });
+    new ssm.StringParameter(this, 'tweet-retweeted-topic-arn-param', {
+      parameterName: `/xcloud/sns/${SNS_TOPICS.TWEET_RETWEETED}/arn`,
+      stringValue:   this.tweetRetweetedTopic.topicArn,
     });
   }
 

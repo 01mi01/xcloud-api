@@ -6,7 +6,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "bootstrap:keyspaces": "ts-node --transpile-only scripts/bootstrap-keyspaces.ts"
   },
   "keywords": [],
   "author": "",
@@ -14,6 +15,7 @@
   "description": "",
   "dependencies": {
     "@xcloud/shared": "*",
+    "aws-sigv4-auth-cassandra-plugin": "^1.0.3",
     "cassandra-driver": "^4.9.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
@@ -33,6 +35,7 @@
     "jest": "^29.7.0",
     "nodemon": "^3.1.14",
     "ts-jest": "^29.3.4",
+    "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.8.3"
   },

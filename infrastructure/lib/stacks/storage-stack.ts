@@ -1,5 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import * as s3   from 'aws-cdk-lib/aws-s3';
+import * as iam  from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 import { EnvironmentConfig } from '../config/environments';
 
@@ -9,14 +10,23 @@ interface StorageStackProps extends cdk.StackProps {
 
 export class StorageStack extends cdk.Stack {
   public readonly bucket:    s3.Bucket;
-  public readonly webBucket: s3.Bucket;
 
   constructor(scope: Construct, id: string, props: StorageStackProps) {
     super(scope, id, props);
 
     this.bucket = new s3.Bucket(this, 'MediaBucket', {
       bucketName:        `xcloud-media-${props.envConfig.name}-${this.account}`,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      // Uploaded images are served directly to the browser as <img> src (the
+      // media-service returns the object's https://<bucket>.s3... URL), so the
+      // objects must be publicly READable. We keep ACLs blocked and grant only
+      // s3:GetObject via the bucket policy below — there's no ListBucket grant
+      // and keys are unguessable UUIDs, so objects can't be enumerated.
+      blockPublicAccess: new s3.BlockPublicAccess({
+        blockPublicAcls:       true,
+        ignorePublicAcls:      true,
+        blockPublicPolicy:     false,
+        restrictPublicBuckets: false,
+      }),
       encryption:        s3.BucketEncryption.S3_MANAGED,
       versioned:         false,
       removalPolicy:     props.envConfig.deletionProtection
@@ -38,18 +48,17 @@ export class StorageStack extends cdk.Stack {
       ],
     });
 
-    // Separate bucket for the React SPA static assets (HTML, JS, CSS).
-    // CloudFront accesses it via OAC — no public access needed.
-    this.webBucket = new s3.Bucket(this, 'WebBucket', {
-      bucketName:        `xcloud-web-${props.envConfig.name}-${this.account}`,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      encryption:        s3.BucketEncryption.S3_MANAGED,
-      versioned:         false,
-      removalPolicy:     cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
-    });
+    // Public read for objects only (GetObject) — lets browsers load the images
+    // directly. Scoped to <bucket>/* ; no s3:ListBucket, so the bucket can't be
+    // enumerated.
+    this.bucket.addToResourcePolicy(new iam.PolicyStatement({
+      sid:        'PublicReadGetObject',
+      effect:     iam.Effect.ALLOW,
+      principals: [new iam.AnyPrincipal()],
+      actions:    ['s3:GetObject'],
+      resources:  [this.bucket.arnForObjects('*')],
+    }));
 
-    new cdk.CfnOutput(this, 'BucketName',    { value: this.bucket.bucketName });
-    new cdk.CfnOutput(this, 'WebBucketName', { value: this.webBucket.bucketName });
+    new cdk.CfnOutput(this, 'BucketName', { value: this.bucket.bucketName });
   }
 }

@@ -55,4 +55,11 @@ describe("processTweetCreated", () => {
         expect(mockFeedCacheRepo.prependToFeed).toHaveBeenCalledWith("author-uuid-1", "tweet-uuid-1");
         expect(mockFeedCacheRepo.prependToFeed).toHaveBeenCalledWith("user-solo", "tweet-uuid-1");
     });
+
+    it("does NOT fan out a reply (X behavior — replies stay out of the home feed)", async () => {
+        await svc.processTweetCreated({ ...mockEvent, replyToTweetId: "parent-tweet-1" });
+
+        expect(mockFollowerRepo.getFollowerIds).not.toHaveBeenCalled();
+        expect(mockFeedCacheRepo.prependToFeed).not.toHaveBeenCalled();
+    });
 });

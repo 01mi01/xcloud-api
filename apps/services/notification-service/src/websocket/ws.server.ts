@@ -1,51 +1,60 @@
-import type { Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
+import type { Server } from "http";
 import { verifyJwt } from "@xcloud/shared";
 import { registerConnection, removeConnection } from "./ws.publisher";
 
-// Attaches a WebSocket server to the existing HTTP server.
-//
-// Clients connect to ws://<host>/ws?token=<JWT>. The JWT is passed as a query
-// param because browsers cannot set custom headers on a WebSocket handshake.
-// On a valid token we register the connection under the user's id so that
-// `pushToUser` (called when a notification is created) can deliver in real time.
+// ws connections we track liveness on (set on pong; cleared before each ping).
+type AliveSocket = WebSocket & { isAlive?: boolean };
+
+// Ping clients on this interval. Must be < the ALB idle timeout (it closes idle
+// connections, default 60s) so the regular ping traffic keeps the tunnel —
+// viewer↔CloudFront↔ALB↔service — open. Also reaps sockets that stopped ponging.
+const HEARTBEAT_MS = 30_000;
+
+/**
+ * Attaches a WebSocket server to the notification HTTP server.
+ *
+ * The browser connects to `/v1/notifications/ws?token=<jwt>` (same-origin via
+ * the Vite proxy in dev). The JWT is verified at the handshake; its `sub` claim
+ * is the userId whose notifications this socket receives. `pushToUser` (in
+ * ws.publisher) then delivers events to all of that user's live sockets.
+ */
 export const attachWebSocketServer = (server: Server): void => {
-    // noServer: we drive the upgrade ourselves (below) so we can authenticate
-    // the JWT before completing the handshake. Letting WebSocketServer attach
-    // its own upgrade listener too would double-handle the upgrade.
-    const wss = new WebSocketServer({ noServer: true });
+    const wss = new WebSocketServer({ server, path: "/v1/notifications/ws" });
 
-    wss.on("connection", (ws: WebSocket, userId: string) => {
-        const conn = { send: (data: string) => ws.send(data) };
-        registerConnection(userId, conn);
-
-        ws.on("close", () => removeConnection(userId, conn));
-        ws.on("error", () => removeConnection(userId, conn));
-
-        // Greeting so the client knows the channel is live.
-        ws.send(JSON.stringify({ type: "connected" }));
-    });
-
-    server.on("upgrade", (req, socket, head) => {
-        // Only handle our path; let other upgrade handlers (if any) pass through.
-        const { url } = req;
-        if (!url || !url.startsWith("/ws")) return;
-
+    wss.on("connection", (ws: AliveSocket, request) => {
+        ws.isAlive = true;
+        ws.on("pong", () => { ws.isAlive = true; });
         try {
-            const token = new URL(url, "http://localhost").searchParams.get("token");
-            if (!token) throw new Error("missing token");
+            const url = new URL(request.url ?? "", "http://localhost");
+            const token = url.searchParams.get("token");
+            if (!token) {
+                ws.close(1008, "missing token");
+                return;
+            }
             const payload = verifyJwt(token);
-            const userId = (payload.sub as string) || (payload as { userId?: string }).userId;
-            if (!userId) throw new Error("token has no subject");
+            const userId = String(payload.sub);
 
-            wss.handleUpgrade(req, socket, head, (ws) => {
-                wss.emit("connection", ws, userId);
-            });
+            registerConnection(userId, ws);
+            ws.send(JSON.stringify({ type: "connected" }));
+
+            ws.on("close", () => removeConnection(userId, ws));
+            ws.on("error", () => removeConnection(userId, ws));
         } catch {
-            socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-            socket.destroy();
+            ws.close(1008, "invalid token");
         }
     });
 
-    console.log("[ws] WebSocket server attached at /ws");
+    // Heartbeat: ping everyone every HEARTBEAT_MS; terminate any socket that
+    // didn't pong since the last round (dead/half-open connection).
+    const heartbeat = setInterval(() => {
+        for (const client of wss.clients as Set<AliveSocket>) {
+            if (client.isAlive === false) { client.terminate(); continue; }
+            client.isAlive = false;
+            try { client.ping(); } catch { /* terminating anyway */ }
+        }
+    }, HEARTBEAT_MS);
+    wss.on("close", () => clearInterval(heartbeat));
+
+    console.log("[ws] WebSocket server attached at /v1/notifications/ws");
 };

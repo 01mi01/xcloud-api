@@ -44,7 +44,8 @@ export const getFeed = async (
         // Incluir al propio usuario para que vea sus propios tweets en su feed
         // (no se requiere que se siga a sí mismo en la tabla follows).
         const authorIds   = Array.from(new Set([userId, ...followingIds]));
-        const allTweetIds = await dbRepo.rebuildFeedFromDb(authorIds, REBUILD_LIMIT);
+        // Dedup defensivamente (un tweetId nunca debe aparecer dos veces en el feed).
+        const allTweetIds = Array.from(new Set(await dbRepo.rebuildFeedFromDb(authorIds, REBUILD_LIMIT)));
 
         // Guardar en Redis para próximas lecturas
         await cacheRepo.setFeedTweetIds(userId, allTweetIds);
@@ -53,14 +54,19 @@ export const getFeed = async (
         tweetIds = allTweetIds.slice(cursor, cursor + limit);
     }
 
+    // Red de seguridad para caches ya "sucios": elimina duplicados conservando orden.
+    tweetIds = Array.from(new Set(tweetIds));
+
     if (tweetIds.length === 0) {
         return { tweets: [], nextCursor: null };
     }
 
     // ── Paso 3: Hidratar tweetIds via Tweet Service ──────
-    const tweets = await tweetClient.getTweetsByIds(tweetIds);
+    // Las respuestas no van al home timeline (comportamiento tipo X); se filtran
+    // aquí también, para caches que ya las contengan de antes.
+    const tweets = (await tweetClient.getTweetsByIds(tweetIds)).filter((t) => !t.replyToTweetId);
 
-    // ── Paso 4: Calcular nextCursor ──────────────────────
+    // ── Paso 4: Calcular nextCursor (sobre el tamaño de página crudo) ──
     const nextOffset = cursor + limit;
     const nextCursor = tweetIds.length === limit ? String(nextOffset) : null;
 

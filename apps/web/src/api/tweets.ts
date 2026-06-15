@@ -27,7 +27,7 @@ export function unlikeTweet(tweetId: string): Promise<void> {
   return apiFetch<void>(`/v1/tweets/${encodeURIComponent(tweetId)}/like`, { method: "DELETE" });
 }
 
-export function getReplies(tweetId: string): Promise<{ replies: import("../types").RawTweet[] }> {
+export function getReplies(tweetId: string): Promise<{ replies: RawTweet[] }> {
   return apiFetch(`/v1/tweets/${encodeURIComponent(tweetId)}/replies`);
 }
 
@@ -53,4 +53,15 @@ export function retweetTweet(tweetId: string): Promise<void> {
 
 export function unretweetTweet(tweetId: string): Promise<void> {
   return apiFetch<void>(`/v1/tweets/${encodeURIComponent(tweetId)}/retweet`, { method: "DELETE" });
+}
+
+/** Per-viewer like/retweet state for a batch of tweets (authed, non-modeled). */
+export async function getInteractions(
+  tweetIds: string[],
+): Promise<{ liked: string[]; retweeted: string[] }> {
+  if (tweetIds.length === 0) return { liked: [], retweeted: [] };
+  return apiFetch<{ liked: string[]; retweeted: string[] }>("/v1/tweets/interactions", {
+    method: "POST",
+    body: { tweetIds },
+  });
 }

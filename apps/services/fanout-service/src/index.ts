@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 dotenv.config({ path: path.resolve(__dirname, "../../../../.env") });
 
 import { startTweetCreatedConsumer } from "./consumers/tweet-created.consumer";
+import { startTweetRetweetedConsumer } from "./consumers/tweet-retweeted.consumer";
 import { startHealthServer } from "./health-server";
 
 const main = async (): Promise<void> => {
@@ -20,7 +21,9 @@ const main = async (): Promise<void> => {
     // exiting so the worker recovers on its own.
     const startConsumer = async (attempt = 1): Promise<void> => {
         try {
-            await startTweetCreatedConsumer();
+            // Concurrent: in prod each consumer long-polls its own SQS queue
+            // (a blocking loop), so they must not be awaited sequentially.
+            await Promise.all([startTweetCreatedConsumer(), startTweetRetweetedConsumer()]);
             console.log("Fan-out Service running — listening for events");
         } catch (err) {
             if (attempt >= 5) {

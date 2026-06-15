@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as usersApi from "../api/users";
-import { apiFetch } from "../api/client";
 import { getTweetsByAuthor, getLikedByUser } from "../api/tweets";
 import { hydrateTweets } from "../api/hydrate";
 import { ApiError } from "../api/client";
@@ -19,9 +18,11 @@ function Profile() {
   const navigate = useNavigate();
   const { identity, refresh } = useAuth();
 
+  type ProfileTab = "posts" | "replies" | "media" | "likes";
+  const [activeTab, setActiveTab] = useState<ProfileTab>("posts");
   const [user, setUser] = useState<User | null>(null);
   const [tweets, setTweets] = useState<Tweet[]>([]);
-  const [activeTab, setActiveTab] = useState<"posts" | "likes">("posts");
+  const [likedTweets, setLikedTweets] = useState<Tweet[]>([]);
   const [loadingUser, setLoadingUser] = useState(true);
   const [loadingTweets, setLoadingTweets] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,10 +42,12 @@ function Profile() {
       .getUser(targetHandle)
       .then(async (u) => {
         setUser(u);
-        // Consultar estado real de follow
-        if (!isOwnProfile) {
-          const res = await apiFetch<{ following: boolean }>(`/v1/users/${u.userId}/follow`).catch(() => ({ following: false }));
-          setFollowing(res.following);
+        // Reflect whether the viewer already follows this user.
+        if (u.handle !== identity?.handle) {
+          const status = await usersApi.getFollowingStatus([u.userId]).catch((): string[] => []);
+          setFollowing(status.includes(u.userId));
+        } else {
+          setFollowing(false);
         }
       })
       .catch((err: unknown) => {
@@ -57,19 +60,31 @@ function Profile() {
 
   useEffect(() => {
     if (!user) return;
+    let cancelled = false;
+    setActiveTab("posts");
     setLoadingTweets(true);
-    setTweets([]);
-    const fetch = activeTab === "posts"
-      ? getTweetsByAuthor(user.userId)
-      : getLikedByUser(user.userId);
-    fetch
-      .then(async ({ tweets: raw }) => {
-        const hydrated = await hydrateTweets(raw, identity?.userId);
-        setTweets(hydrated);
+    // The user's own tweets (split into Posts/Replies/Media client-side) and the
+    // tweets they liked (Likes tab) — fetched together.
+    Promise.all([
+      getTweetsByAuthor(user.userId).then(({ tweets: raw }) => hydrateTweets(raw, identity?.userId)),
+      getLikedByUser(user.userId).then(({ tweets: raw }) => hydrateTweets(raw, identity?.userId)),
+    ])
+      .then(([authored, liked]) => {
+        if (cancelled) return;
+        setTweets(authored);
+        setLikedTweets(liked);
       })
-      .catch(() => setTweets([]))
-      .finally(() => setLoadingTweets(false));
-  }, [user, identity?.userId, activeTab]);
+      .catch(() => { if (!cancelled) { setTweets([]); setLikedTweets([]); } })
+      .finally(() => { if (!cancelled) setLoadingTweets(false); });
+    return () => { cancelled = true; };
+  }, [user, identity?.userId]);
+
+  // Tweets shown for the active tab.
+  const visibleTweets =
+    activeTab === "posts"   ? tweets.filter((t) => !t.replyToTweetId)
+    : activeTab === "replies" ? tweets.filter((t) => t.replyToTweetId)
+    : activeTab === "media"   ? tweets.filter((t) => t.mediaUrls.length > 0)
+    : likedTweets;
 
   const handleFollow = async () => {
     if (!user) return;
@@ -156,7 +171,7 @@ function Profile() {
 
         {/* Avatar row */}
         <div className={styles.avatarRow}>
-          <Avatar size={120} />
+          <Avatar size={120} src={user.avatarUrl || undefined} />
           {isOwnProfile ? (
             <button
               className={styles.editBtn}
@@ -201,11 +216,19 @@ function Profile() {
             </span>
           </div>
           <div className={styles.followStats}>
-            <span className={styles.statLink} onClick={() => navigate(`/profile/${user.handle}/connections/following`)}>
+            <span
+              className={styles.statLink}
+              onClick={() => navigate(`/profile/${user.handle}/following`)}
+              style={{ cursor: "pointer" }}
+            >
               <strong>{user.followingCount.toLocaleString()}</strong>{" "}
               <span className={styles.statLabel}>Following</span>
             </span>
-            <span className={styles.statLink} onClick={() => navigate(`/profile/${user.handle}/connections/followers`)}>
+            <span
+              className={styles.statLink}
+              onClick={() => navigate(`/profile/${user.handle}/followers`)}
+              style={{ cursor: "pointer" }}
+            >
               <strong>{user.followersCount.toLocaleString()}</strong>{" "}
               <span className={styles.statLabel}>Followers</span>
             </span>
@@ -214,18 +237,28 @@ function Profile() {
 
         {/* Tabs */}
         <div className={styles.tabs}>
-          <button className={`${styles.tab} ${activeTab === "posts" ? styles.tabActive : ""}`} onClick={() => setActiveTab("posts")}>Posts</button>
-          <button className={styles.tab} disabled>Replies</button>
-          <button className={styles.tab} disabled>Media</button>
-          <button className={`${styles.tab} ${activeTab === "likes" ? styles.tabActive : ""}`} onClick={() => setActiveTab("likes")}>Likes</button>
+          {(["posts", "replies", "media", "likes"] as const).map((tab) => (
+            <button
+              key={tab}
+              className={`${styles.tab} ${activeTab === tab ? styles.tabActive : ""}`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </button>
+          ))}
         </div>
 
-        {/* Tweet list */}
+        {/* Tweet list (per active tab) */}
         {loadingTweets && <p className={styles.msg}>Loading…</p>}
-        {!loadingTweets && tweets.length === 0 && (
-          <p className={styles.msg}>{activeTab === "posts" ? "No posts yet." : "No liked posts yet."}</p>
+        {!loadingTweets && visibleTweets.length === 0 && (
+          <p className={styles.msg}>
+            {activeTab === "posts"   ? "No posts yet."
+              : activeTab === "replies" ? "No replies yet."
+              : activeTab === "media"   ? "No media yet."
+              : "No likes yet."}
+          </p>
         )}
-        {tweets.map((tweet) => (
+        {visibleTweets.map((tweet) => (
           <TweetCard key={tweet.tweetId} tweet={tweet} />
         ))}
 
@@ -237,6 +270,8 @@ function Profile() {
             onSave={(updated) => {
               setUser((u) => (u ? { ...u, ...updated } : u));
               setShowEditModal(false);
+              // Refresh auth so the sidebar (own avatar/name) reflects the change.
+              if (isOwnProfile) refresh().catch(() => {});
             }}
           />
         )}

@@ -26,6 +26,9 @@ coverage/
 # logs
 *.log
 logs/
+
+# media-service local uploads (dev)
+apps/services/media-service/uploads/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

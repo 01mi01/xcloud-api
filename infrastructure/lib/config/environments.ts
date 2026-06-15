@@ -29,7 +29,7 @@ export const environments: Record<string, EnvironmentConfig> = {
     cacheNodeType: 'cache.t4g.micro',
     opensearchInstanceType: 't3.small.search',
     deletionProtection: false,
-    enableSearch: false,
+    enableSearch: true,
   },
   gamma: {
     name: 'gamma',

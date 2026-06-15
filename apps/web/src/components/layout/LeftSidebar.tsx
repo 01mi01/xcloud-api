@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import ComposeTweetModal from "../tweet/ComposeTweetModal";
 import type { RawTweet } from "../../types";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { useNotifications } from "../../context/NotificationsContext";
 import Avatar from "../common/Avatar";
 import styles from "./LeftSidebar.module.css";
 
@@ -97,9 +98,41 @@ const navItems = [
   { to: "/profile", label: "Profile", icon: UserIcon },
 ];
 
+// Live unread badge — accent pill with a ring in the page bg so it lifts off the bell.
+const badgeStyle: React.CSSProperties = {
+  position: "absolute",
+  top: -5,
+  left: 13,
+  minWidth: 18,
+  height: 18,
+  padding: "0 5px",
+  borderRadius: 999,
+  background: "var(--color-accent)",
+  color: "#fff",
+  fontSize: 11,
+  fontWeight: 700,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  lineHeight: 1,
+  border: "2px solid var(--color-bg-primary)",
+  boxSizing: "content-box",
+};
+
 function LeftSidebar() {
   const navigate = useNavigate();
   const { identity, profile, logout } = useAuth();
+  const { unreadCount } = useNotifications();
+
+  // Replay the pulse only when the count goes UP (a new notification arrived),
+  // not on initial load or when marking read. Bumping the key remounts the
+  // badge span so the CSS animation restarts.
+  const prevUnread = useRef(unreadCount);
+  const [pulseKey, setPulseKey] = useState(0);
+  useEffect(() => {
+    if (unreadCount > prevUnread.current) setPulseKey((k) => k + 1);
+    prevUnread.current = unreadCount;
+  }, [unreadCount]);
   const displayName =
     profile?.displayName ?? identity?.handle ?? identity?.email ?? "You";
   const handle = profile?.handle ?? identity?.handle ?? "";
@@ -130,7 +163,14 @@ function LeftSidebar() {
           >
             {({ isActive }) => (
               <>
-                <Icon filled={isActive} />
+                <span style={{ position: "relative", display: "inline-flex" }}>
+                  <Icon filled={isActive} />
+                  {to === "/notifications" && unreadCount > 0 && (
+                    <span key={pulseKey} className={styles.badgePulse} style={badgeStyle}>
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                  )}
+                </span>
                 <span className={styles.navLabel}>{label}</span>
               </>
             )}
@@ -144,7 +184,7 @@ function LeftSidebar() {
       </button>
 
       <div className={styles.userPill} onClick={() => setShowMenu((p) => !p)}>
-        <Avatar size={40} />
+        <Avatar size={40} src={profile?.avatarUrl || undefined} />
         <div className={styles.userInfo}>
           <span className={styles.displayName}>{displayName}</span>
           <span className={styles.handle}>{handle ? `@${handle}` : ""}</span>

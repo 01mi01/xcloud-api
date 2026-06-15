@@ -5,7 +5,8 @@
 
 set -e
 
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"   # repo root (scripts/ lives one level down)
+cd "$ROOT"
 LOGS="$ROOT/logs"
 mkdir -p "$LOGS"
 

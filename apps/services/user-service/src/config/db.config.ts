@@ -11,6 +11,8 @@ const pool = new Pool({
     database: process.env.DB_NAME     || "xcloud",
     user:     process.env.DB_USER     || "postgres",
     password: process.env.DB_PASSWORD || "postgres",
+    // RDS requires SSL (rds.force_ssl); encrypt in prod (CA not verified — demo).
+    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined,
 });
 
 export default pool;

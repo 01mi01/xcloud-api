@@ -1,7 +1,9 @@
 import { useRef, useState } from "react";
 import type { User } from "../../types";
-import Avatar from "../common/Avatar";
 import * as usersApi from "../../api/users";
+import { uploadImage } from "../../api/media";
+import { ApiError } from "../../api/client";
+import Avatar from "../common/Avatar";
 import styles from "./EditProfileModal.module.css";
 
 interface Props {
@@ -10,28 +12,16 @@ interface Props {
   onSave: (updated: Partial<User>) => void;
 }
 
-// ─── S3 upload (descomentar cuando media-service esté activo en AWS) ──────────
-// async function uploadToS3(file: File, type: "avatar" | "banner"): Promise<string> {
-//   const form = new FormData();
-//   form.append("file", file);
-//   form.append("type", type);
-//   const res = await fetch("/api/v1/media/upload", { method: "POST", body: form });
-//   if (!res.ok) throw new Error("Upload failed");
-//   const { url } = await res.json();
-//   return url as string;
-// }
-// ─────────────────────────────────────────────────────────────────────────────
-
 function EditProfileModal({ user, onClose, onSave }: Props) {
   const [displayName, setDisplayName] = useState(user.displayName);
   const [bio, setBio] = useState(user.bio ?? "");
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Preview local — se reemplazará con la URL de S3 al subir
-  const [avatarPreview, setAvatarPreview] = useState<string>(user.avatarUrl ?? "");
+  // Avatar persists via media-service upload; banner is preview-only for now.
+  const [avatarUrl, setAvatarUrl] = useState<string>(user.avatarUrl ?? "");
   const [bannerPreview, setBannerPreview] = useState<string>("");
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -41,11 +31,22 @@ function EditProfileModal({ user, onClose, onSave }: Props) {
   const bioOver = bio.length > 160;
   const invalid = nameOver || bioOver || displayName.trim().length === 0;
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
-    setAvatarFile(file);
-    setAvatarPreview(URL.createObjectURL(file));
+    setError(null);
+    setUploading(true);
+    try {
+      // media-service returns a relative URL; make it absolute so it passes the
+      // user-service avatarUrl validation (^https?://) and renders as <img>.
+      const path = await uploadImage(file);
+      setAvatarUrl(path.startsWith("http") ? path : `${window.location.origin}${path}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Avatar upload failed");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleBannerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -56,31 +57,24 @@ function EditProfileModal({ user, onClose, onSave }: Props) {
   };
 
   const handleSave = async () => {
-    if (invalid || saving) return;
+    if (invalid || saving || uploading) return;
     setSaving(true);
     setError(null);
     try {
-      let finalAvatarUrl = user.avatarUrl ?? "";
-
-      // ── Subida a S3 (descomentar en AWS) ────────────────────────────────
-      // if (avatarFile) finalAvatarUrl = await uploadToS3(avatarFile, "avatar");
-      // if (bannerFile) await uploadToS3(bannerFile, "banner"); // guardar en user también si el modelo lo soporta
-      // ────────────────────────────────────────────────────────────────────
-
-      // Por ahora el avatar queda como preview local (no persiste tras recargar)
-      void avatarFile;
+      // Banner preview is local-only for now (no persistence until media-service
+      // banner support lands on AWS).
       void bannerFile;
 
-      await usersApi.updateMe({
+      // Persist via PUT /v1/users/me (only send avatarUrl if set).
+      const updated = await usersApi.updateMe({
         displayName,
         bio: bio || undefined,
-        avatarUrl: finalAvatarUrl || undefined,
+        ...(avatarUrl ? { avatarUrl } : {}),
       });
-
-      onSave({ displayName, bio, avatarUrl: avatarPreview || finalAvatarUrl });
+      onSave(updated);
       onClose();
-    } catch {
-      setError("No se pudo guardar. Intenta de nuevo.");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not save profile.");
     } finally {
       setSaving(false);
     }
@@ -103,7 +97,7 @@ function EditProfileModal({ user, onClose, onSave }: Props) {
             </svg>
           </button>
           <span className={styles.title}>Edit profile</span>
-          <button className={styles.saveBtn} onClick={handleSave} disabled={invalid || saving}>
+          <button className={styles.saveBtn} onClick={handleSave} disabled={invalid || saving || uploading}>
             {saving ? "Saving…" : "Save"}
           </button>
         </div>
@@ -128,13 +122,18 @@ function EditProfileModal({ user, onClose, onSave }: Props) {
           />
         </div>
 
-        {/* Avatar */}
+        {/* Avatar with camera overlay → uploads a new profile picture */}
         <div className={styles.avatarWrapper}>
-          {avatarPreview
-            ? <img src={avatarPreview} alt="avatar" className={styles.avatarImg} />
+          {avatarUrl
+            ? <img src={avatarUrl} alt="avatar" className={styles.avatarImg} />
             : <Avatar size={80} />
           }
-          <button className={styles.avatarOverlay} onClick={() => avatarInputRef.current?.click()} title="Cambiar foto de perfil">
+          <button
+            className={styles.avatarOverlay}
+            onClick={() => avatarInputRef.current?.click()}
+            disabled={uploading}
+            title="Upload a profile picture"
+          >
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={2}>
               <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
               <circle cx="12" cy="13" r="4" />
@@ -148,6 +147,8 @@ function EditProfileModal({ user, onClose, onSave }: Props) {
             onChange={handleAvatarChange}
           />
         </div>
+        {uploading && <p style={{ textAlign: "center", color: "var(--color-text-secondary)", fontSize: 14, margin: "4px 0 0" }}>Uploading…</p>}
+        {error && <p style={{ textAlign: "center", color: "#f4212e", fontSize: 14, margin: "4px 0 0" }}>{error}</p>}
 
         {/* Formulario */}
         <div className={styles.form}>

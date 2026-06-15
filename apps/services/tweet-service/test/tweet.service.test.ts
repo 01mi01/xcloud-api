@@ -17,6 +17,7 @@ const mockTweet: Tweet = {
     replyToTweetId: null,
     likesCount:     0,
     retweetCount:   0,
+    repliesCount:   0,
     createdAt:      new Date().toISOString(),
 };
 
@@ -96,5 +97,44 @@ describe("unlikeTweet", () => {
         mockRepo.findById.mockResolvedValue(mockTweet);
         mockRepo.deleteLike.mockResolvedValue(false);
         await expect(svc.unlikeTweet("user-uuid-2", "tweet-uuid-1")).rejects.toMatchObject({ name: "NotLikedError" });
+    });
+});
+
+describe("retweetTweet", () => {
+    it("inserts retweet and publishes event", async () => {
+        mockRepo.findById.mockResolvedValue(mockTweet);
+        mockRepo.retweetExists.mockResolvedValue(false);
+        mockRepo.insertRetweet.mockResolvedValue();
+        mockProducer.publishTweetRetweeted.mockResolvedValue();
+        await expect(svc.retweetTweet("user-uuid-2", "tweet-uuid-1")).resolves.toBeUndefined();
+        expect(mockRepo.insertRetweet).toHaveBeenCalledWith("user-uuid-2", "tweet-uuid-1");
+        expect(mockProducer.publishTweetRetweeted).toHaveBeenCalledWith({
+            tweetId: "tweet-uuid-1", retweeterId: "user-uuid-2", authorId: "user-uuid-1",
+        });
+    });
+
+    it("throws AlreadyRetweetedError when already retweeted", async () => {
+        mockRepo.findById.mockResolvedValue(mockTweet);
+        mockRepo.retweetExists.mockResolvedValue(true);
+        await expect(svc.retweetTweet("user-uuid-2", "tweet-uuid-1")).rejects.toMatchObject({ name: "AlreadyRetweetedError" });
+    });
+
+    it("throws TweetNotFoundError when tweet does not exist", async () => {
+        mockRepo.findById.mockResolvedValue(null);
+        await expect(svc.retweetTweet("user-uuid-2", "ghost")).rejects.toMatchObject({ name: "TweetNotFoundError" });
+    });
+});
+
+describe("unretweetTweet", () => {
+    it("deletes retweet when it exists", async () => {
+        mockRepo.findById.mockResolvedValue(mockTweet);
+        mockRepo.deleteRetweet.mockResolvedValue(true);
+        await expect(svc.unretweetTweet("user-uuid-2", "tweet-uuid-1")).resolves.toBeUndefined();
+    });
+
+    it("throws NotRetweetedError when retweet does not exist", async () => {
+        mockRepo.findById.mockResolvedValue(mockTweet);
+        mockRepo.deleteRetweet.mockResolvedValue(false);
+        await expect(svc.unretweetTweet("user-uuid-2", "tweet-uuid-1")).rejects.toMatchObject({ name: "NotRetweetedError" });
     });
 });

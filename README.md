@@ -24,20 +24,21 @@ El sistema está compuesto por **8 microservicios** independientes, cada uno con
 
 | Servicio | Puerto | Descripción | Base de datos |
 |---|---|---|---|
-| Auth Service | 3000 | Registro, login, JWT | PostgreSQL (`auth_users`) |
+| Auth Service | 3000 | Registro (valida handle), login, JWT | PostgreSQL (`auth_users`) |
 | User Service | 3001 | Perfiles, follow/unfollow, búsqueda | PostgreSQL (`users`, `follows`) |
-| Tweet Service | 3002 | CRUD tweets, likes, retweets | Cassandra (`tweets`, `likes`, `retweets`) |
+| Tweet Service | 3002 | CRUD tweets, likes, retweets, replies, estado por usuario | Cassandra (`tweets`, `likes`, `retweets`, `replies_by_tweet`) |
 | Feed Service | 3003 | Timeline personalizado con cursor pagination | Redis (cache) + Cassandra (fallback) |
-| Fan-out Service | worker + /health 3007 | Distribuye tweets al feed de seguidores | Redis (escritura) + PostgreSQL (lectura) |
-| Notification Service | 3004 | Notificaciones de likes y follows | PostgreSQL (`notifications`) |
-| Search Service | 3005 | Búsqueda full-text de tweets | OpenSearch (`tweets` index) |
-| Media Service | 3006 | Gestión de archivos multimedia (stub) | S3 (producción) |
+| Fan-out Service | worker + /health 3007 | Distribuye tweets/retweets al feed de seguidores | Redis (escritura) + PostgreSQL (lectura) |
+| Notification Service | 3004 | Notificaciones (likes/retweets/follows) + push **WebSocket** | PostgreSQL (`notifications`) |
+| Search Service | 3005 | Búsqueda full-text de tweets **y usuarios** | OpenSearch (`tweets`, `users`) |
+| Media Service | 3006 | Subida de imágenes (disco local / S3) | disco local (dev) / S3 (prod) |
 
 ### Comunicación entre servicios
 
 - **REST** para APIs públicas (cliente → servicio)
+- **WebSocket** para notificaciones en tiempo real (notification-service → SPA)
 - **Kafka** (local) / **SQS+SNS** (producción) para eventos asíncronos — conmutación automática en `@xcloud/shared`
-- **gRPC** para hidratación de tweets (Feed Service → Tweet Service, `GetTweetsByIds`)
+- **HTTP interno** para hidratación de datos (Feed Service → Tweet Service)
 
 ### Topics de Kafka / Colas SQS
 
@@ -45,7 +46,10 @@ El sistema está compuesto por **8 microservicios** independientes, cada uno con
 |---|---|---|
 | `tweet.created` | Tweet Service | Fan-out Service, Search Service |
 | `tweet.liked` | Tweet Service | Notification Service |
+| `tweet.retweeted` | Tweet Service | Fan-out Service, Notification Service |
 | `user.followed` | User Service | Notification Service |
+| `user.created` | Auth Service | Search Service (índice de usuarios) |
+| `user.updated` | User Service | Search Service (índice de usuarios) |
 
 ## Prerequisitos
 
@@ -117,7 +121,7 @@ npm run build -w packages/shared     # @xcloud/shared (lo consumen los servicios
 Arranca los 8 microservicios **y** el SPA desde **una sola terminal**:
 
 ```bash
-./start-dev.sh
+./scripts/start-dev.sh
 ```
 
 Cada proceso corre en segundo plano; los logs van a `logs/<servicio>.log`.
@@ -160,7 +164,7 @@ cd apps/services/search-service && npm run dev
 
 El SPA en `apps/web/` consume todos los servicios via un proxy de Vite (`/api/v1/<service>/*` → `http://localhost:<port>/v1/<service>/*`).
 
-> Si usaste `./start-dev.sh` (opción A), el SPA ya está corriendo en `:5173` — no hace falta este paso.
+> Si usaste `./scripts/start-dev.sh` (opción A), el SPA ya está corriendo en `:5173` — no hace falta este paso.
 
 ```bash
 cd apps/web && npm run dev
@@ -187,13 +191,16 @@ Stop-Service postgresql-x64-17
 | POST | `/v1/auth/login` | No | Login, obtener JWT |
 | GET | `/v1/auth/me` | Bearer | Datos del usuario actual |
 
+> El `handle` se valida en el registro contra la misma regla del contrato Smithy (`^[a-zA-Z0-9_]{4,20}$` — letras, números y guion bajo). Así, un handle que se puede crear siempre se puede resolver vía `GET /v1/users/:handle` (servido por el SSDK, que aplica la misma restricción).
+
 ### User Service (puerto 3001)
 
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
 | GET | `/v1/users/:handle` | No | Obtener perfil por handle |
-| GET | `/v1/users/by-id/:userId` | No | Obtener perfil por userId |
+| GET | `/v1/users/by-id/:userId` | No | Obtener perfil por userId (usado por hidratación de tweets) |
 | GET | `/v1/users/search?q=...` | No | Buscar usuarios por handle o nombre |
+| POST | `/v1/users/following-status` | Bearer | ¿Cuáles de un lote de userIds sigue el viewer? (botones follow) |
 | PUT | `/v1/users/me` | Bearer | Actualizar perfil propio |
 | POST | `/v1/users/:userId/follow` | Bearer | Seguir a un usuario |
 | DELETE | `/v1/users/:userId/follow` | Bearer | Dejar de seguir |
@@ -210,17 +217,18 @@ Stop-Service postgresql-x64-17
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
 | POST | `/v1/tweets` | Bearer | Publicar tweet o reply |
+| GET | `/v1/tweets/author/:authorId` | No | Listar tweets de un usuario (perfil) |
+| GET | `/v1/tweets/liked/:userId` | No | Listar tweets que un usuario dio like (pestaña Likes) |
+| GET | `/v1/tweets/:tweetId/replies` | No | Listar respuestas de un tweet |
 | GET | `/v1/tweets/:tweetId` | No | Obtener tweet por ID |
 | DELETE | `/v1/tweets/:tweetId` | Bearer | Eliminar tweet propio |
-| GET | `/v1/tweets/:tweetId/replies` | No | Replies de un tweet |
 | POST | `/v1/tweets/:tweetId/like` | Bearer | Dar like |
 | DELETE | `/v1/tweets/:tweetId/like` | Bearer | Quitar like |
 | GET | `/v1/tweets/:tweetId/like` | Bearer | Estado de like |
-| POST | `/v1/tweets/:tweetId/retweet` | Bearer | Retweet |
+| POST | `/v1/tweets/:tweetId/retweet` | Bearer | Retuitear |
 | DELETE | `/v1/tweets/:tweetId/retweet` | Bearer | Quitar retweet |
 | GET | `/v1/tweets/:tweetId/retweet` | Bearer | Estado de retweet |
-| GET | `/v1/tweets/by-author/:authorId` | No | Tweets de un autor (perfil) |
-| GET | `/v1/tweets/liked-by/:userId` | No | Tweets likeados por un usuario |
+| POST | `/v1/tweets/interactions` | Bearer | Estado like/retweet del usuario para un lote de tweetIds |
 
 ### Feed Service (puerto 3003)
 
@@ -234,12 +242,25 @@ Stop-Service postgresql-x64-17
 |---|---|---|---|
 | GET | `/v1/notifications` | Bearer | Listar notificaciones |
 | PUT | `/v1/notifications/:id/read` | Bearer | Marcar como leída |
+| WS | `/v1/notifications/ws?token=<jwt>` | JWT (query) | Notificaciones en tiempo real (push) |
+
+> El WebSocket entrega likes/retweets/follows en tiempo real; el JWT se valida en el handshake (`?token=`). El SPA muestra un badge de no leídas y actualiza la lista al vuelo.
+
+### Media Service (puerto 3006)
+
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| POST | `/v1/media` | Bearer | Subir imagen (multipart, campo `file`); devuelve `{ url }` |
+| GET | `/v1/media/files/:name` | No | Servir imagen (solo dev; en prod es S3/CloudFront) |
+
+> Almacenamiento híbrido: disco local en dev (`uploads/`), S3 en producción (`NODE_ENV`). Acepta PNG/JPEG/GIF/WebP hasta 5 MB. El composer del SPA sube la imagen y guarda la URL en `mediaUrls` del tweet.
 
 ### Search Service (puerto 3005)
 
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
-| GET | `/v1/search?q=...&type=tweets` | No | Buscar tweets por keyword |
+| GET | `/v1/search?q=...&type=tweets` | No | Buscar tweets por keyword/hashtag |
+| GET | `/v1/search?q=...&type=users` | No | Buscar usuarios por handle/nombre/bio |
 
 ## Prueba end-to-end
 
@@ -417,7 +438,68 @@ cd infrastructure
 npx cdk synth --context env=beta
 ```
 
-Beta usa `enableSearch=false`, 1 NAT Gateway, 1 task por servicio (~$136/mes). Ver `docs/adr/` para las decisiones de arquitectura (SQS sobre MSK, ECS sobre EKS).
+Beta usa `enableSearch=true` (OpenSearch `t3.small.search`, ~$25/mes extra), 1 NAT, 1 task por servicio. Ver `docs/adr/` para las decisiones (SQS sobre MSK, ECS sobre EKS).
+
+### Deploy y teardown de beta (scripts)
+
+Para levantar y bajar el entorno beta con una sola orden cada uno (desde la raíz).
+**Se pasa el perfil AWS como argumento** (obligatorio) — así eliges la cuenta
+correcta y no hay forma de desplegar en la equivocada:
+
+```bash
+./scripts/deploy-beta.sh personal     # build+push imágenes a ECR + cdk deploy --all (env=beta)
+./scripts/bootstrap-beta.sh personal  # crea el schema de Amazon Keyspaces (Postgres se crea solo al arrancar)
+./scripts/deploy-web.sh personal      # build del SPA + s3 sync + invalidación de CloudFront
+./scripts/status-beta.sh personal     # READ-ONLY: ¿queda algo corriendo? ¿me están cobrando?
+./scripts/destroy-beta.sh personal    # cdk destroy --all (env=beta) — borra TODO
+```
+
+✅ **Desplegado y funcionando end-to-end** (us-east-2): auth, tweets, perfiles,
+follows, feed, media y el **SPA React en CloudFront**. El flujo completo y, sobre
+todo, las **incompatibilidades reales de Amazon Keyspaces** que se encontraron y
+corrigieron (batches `LOGGED`, consistencia `LOCAL_ONE`, `SELECT COUNT(*)`), más
+el SSL de RDS y el guard FIFO de SNS, están en
+[docs/runbooks/aws-deploy.md](docs/runbooks/aws-deploy.md). Resumen del schema:
+**Postgres (RDS)** lo crean los servicios al arrancar (`ensurePostgresSchema`,
+porque RDS está en subredes privadas); **Cassandra (Keyspaces)** se crea con
+`./scripts/bootstrap-beta.sh` desde tu máquina (endpoint público, TLS + SigV4).
+
+**Frontend en AWS:** el stack `cdn` (S3 privado + CloudFront) sirve el SPA en `/`
+y enruta `/api/*` al ALB como segundo origen (una CloudFront Function quita el
+prefijo `/api`) — así las llamadas del SPA son same-origin (sin CORS ni
+mixed-content). Los archivos se suben por CLI con `./scripts/deploy-web.sh` (no con
+`BucketDeployment`).
+
+**Búsqueda en AWS:** beta tiene `enableSearch:true`, así que la búsqueda full-text
+sí funciona. search-service usa el cliente `@opensearch-project/opensearch` con
+firma **SigV4** (rol de la task IAM) en producción — se cambió desde
+`@elastic/elasticsearch` porque su cliente v8 rechaza un dominio OpenSearch. Solo
+indexa eventos posteriores a su despliegue (no hay backfill). Detalle en
+[docs/runbooks/aws-deploy.md](docs/runbooks/aws-deploy.md).
+
+`scripts/status-beta.sh` no cambia nada: lista los stacks beta y cuenta los recursos
+"always-on" facturables (NAT Gateway, tasks Fargate, RDS, ALB, ElastiCache) y
+dice `✅ CLEAN` o `⚠️ RESOURCES LIVE`. Úsalo después de `scripts/destroy-beta.sh` para
+confirmar que no quedó nada drenando créditos.
+
+Configura un perfil con nombre por cuenta una sola vez (evita usar `default`
+para cuentas importantes):
+
+```bash
+aws configure --profile personal     # cuenta con créditos
+aws configure --profile work
+aws configure --profile colleagues
+```
+
+Ambos scripts **imprimen el perfil + cuenta + región AWS y piden confirmación
+(`yes`) antes de tocar nada**. Requieren AWS CLI configurado y Docker corriendo
+(CDK construye las imágenes de los servicios).
+
+> ⚠️ **Costo:** beta corre recursos NO incluidos en el free tier (NAT Gateway +
+> Fargate + ALB, ~$0.10/hora). Esos cargos consumen tus **créditos AWS** (no
+> salen de tu bolsillo si tienes los ~$200 de crédito, pero sí los gastan, ~$11–15
+> por 3 días). RDS y ElastiCache t3.micro sí entran en el free tier de 12 meses.
+> **Ejecuta `./scripts/destroy-beta.sh` apenas termines la demo** para frenar el consumo.
 
 ## Estructura del proyecto
 
@@ -435,10 +517,10 @@ xcloud-api/
 │       ├── auth-service/         # :3000 — registro, login, JWT
 │       ├── user-service/         # :3001 — perfiles, follow, búsqueda (SSDK piloto)
 │       ├── tweet-service/        # :3002 — tweets, likes, retweets, replies
-│       ├── feed-service/         # :3003 — timeline, cursor pagination, gRPC
+│       ├── feed-service/         # :3003 — timeline, cursor pagination
 │       ├── notification-service/ # :3004 — notificaciones, WebSocket publisher
 │       ├── search-service/       # :3005 — full-text OpenSearch
-│       ├── media-service/        # :3006 — stub (S3 en producción)
+│       ├── media-service/        # :3006 — subida de imágenes (disco local / S3)
 │       └── fanout-service/       # worker + /health :3007 — fan-out on write
 ├── packages/
 │   ├── shared/                   # @xcloud/shared (auth, mensajería Kafka/SQS, utils)

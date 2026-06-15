@@ -27,6 +27,7 @@ xcloud-api/
 │   ├── sdk-client/                     # Smithy-generated TS client (gitignored output; `npm run generate`). Wired into apps/web.
 │   ├── sdk-server/                     # Smithy-generated server SDK/SSDK, CJS (gitignored output; `npm run generate`). Full-SSDK pilot in user-service; contract types in tweet/feed.
 ├── infrastructure/                     # AWS CDK (stacks/, constructs/, config/)
+├── scripts/                            # dev + AWS-beta lifecycle shell scripts (see scripts/README.md)
 ├── k8s/                                # reference only (ADR-002 chose ECS over EKS)
 └── docs/                               # ADRs, runbooks, migration-baseline.md
 ```
@@ -41,25 +42,26 @@ xcloud-api/
 | user | 3001 (`USER_PORT`) | PostgreSQL `users`,`follows` | publishes `user.followed` |
 | tweet | 3002 (`TWEET_PORT`) | Cassandra/Keyspaces | publishes `tweet.created`, `tweet.liked` |
 | feed | 3003 (`FEED_PORT`) | Redis + Cassandra | — (HTTP hydration) |
-| notification | 3004 (`NOTIFICATION_PORT`) | PostgreSQL `notifications` | consumes `tweet.liked`, `user.followed` |
-| search | 3005 (`SEARCH_PORT`) | Elasticsearch / OpenSearch | consumes `tweet.created` |
-| media | 3006 (`MEDIA_PORT`) | S3 (prod) | — (stub: `/health` + 503) |
-| fanout | worker; `/health` 3007 (`FANOUT_PORT`) | Redis + PostgreSQL | consumes `tweet.created` |
+| notification | 3004 (`NOTIFICATION_PORT`) | PostgreSQL `notifications` | consumes `tweet.liked`, `tweet.retweeted`, `user.followed`; **WebSocket push** at `/v1/notifications/ws` |
+| search | 3005 (`SEARCH_PORT`) | Elasticsearch / OpenSearch | consumes `tweet.created`, `user.created`, `user.updated` |
+| media | 3006 (`MEDIA_PORT`) | local disk (dev) / S3 (prod) | — (image uploads: `POST /v1/media`, multer; `NODE_ENV`-gated storage) |
+| fanout | worker; `/health` 3007 (`FANOUT_PORT`) | Redis + PostgreSQL | consumes `tweet.created`, `tweet.retweeted` |
 
 ## Hybrid messaging (the key architectural decision)
 
 Producers/consumers go through **`@xcloud/shared`** (`packages/shared/src/messaging/`), which switches transport by `NODE_ENV`:
-- **local dev → Kafka** (kafkajs; topics `tweet.created`, `tweet.liked`, `user.followed`, auto-created by `kafka-init`).
-- **production → SQS/SNS.** `tweet.created` fans out to **two** consumers (fanout + search) via an **SNS topic → 2 SQS queues**; `tweet.liked`/`user.followed` are 1:1 SQS queues.
+- **local dev → Kafka** (kafkajs; topics `tweet.created`, `tweet.liked`, `tweet.retweeted`, `user.followed`, `user.created`, `user.updated`, auto-created by `kafka-init`).
+- **production → SQS/SNS.** `tweet.created` fans out to **two** consumers (fanout + search) and `tweet.retweeted` to **two** (fanout + notification), each via an **SNS topic → 2 SQS queues**; `tweet.liked`/`user.followed`/`user.created`/`user.updated` are 1:1 SQS queues.
 
-Use `createPublisher({clientId})` / `createConsumer({clientId, groupId})`. Prod env vars (set by CDK, matched in shared): `TWEET_CREATED_TOPIC_ARN`, `FANOUT_QUEUE_URL`, `TWEET_INDEX_QUEUE_URL`, `LIKE_EVENT_QUEUE_URL`, `FOLLOW_EVENT_QUEUE_URL`. Do **not** reintroduce direct `kafkajs` in services — route through `@xcloud/shared`.
+Use `createPublisher({clientId})` / `createConsumer({clientId, groupId})`. Prod env vars (set by CDK, matched in shared): `TWEET_CREATED_TOPIC_ARN`, `TWEET_RETWEETED_TOPIC_ARN`, `FANOUT_QUEUE_URL`, `TWEET_INDEX_QUEUE_URL`, `FANOUT_RETWEET_QUEUE_URL`, `NOTIFY_RETWEET_QUEUE_URL`, `LIKE_EVENT_QUEUE_URL`, `FOLLOW_EVENT_QUEUE_URL`, `USER_CREATED_QUEUE_URL`, `USER_UPDATED_QUEUE_URL`. Do **not** reintroduce direct `kafkajs` in services — route through `@xcloud/shared`. **A producer added to a service whose tests don't mock it will open a real Kafka connection in unit tests (slow + open handle) — `jest.mock` the producer (see auth/user/tweet test files).**
 
 ## Service conventions
 
 Layered: `src/{index.ts, app.ts, config/, routes/, controllers/, services/, repositories/, events|consumers/}`.
 - `index.ts` loads the **root `.env`** via `path.resolve(__dirname, "../../../../.env")` (4 up from `src/`); config/consumer files use 5 up. There is **no** per-service `.env`.
 - Shared auth: routes import `verifyToken` from `@xcloud/shared` (the 5 old local copies were consolidated). Error handler, logger, pagination, jwt utils also live there.
-- API routes are `/v1/<resource>`. The web SPA proxies `/api/v1/<service>/*` → `http://localhost:<port>/v1/<service>/*` (`apps/web/vite.config.ts`).
+- API routes are `/v1/<resource>`. The web SPA proxies `/api/v1/<service>/*` → `http://localhost:<port>/v1/<service>/*` (`apps/web/vite.config.ts`); the proxy entries set `ws:true` so the notification WebSocket (`/api/v1/notifications/ws`) is proxied too.
+- **Not every route is Smithy-modeled.** tweet-service serves modeled ops (create/get/delete/like/retweet) plus **hand-written** non-modeled routes: `GET /author/:authorId` (profile posts), `GET /:tweetId/replies`, `POST /interactions` (per-viewer like/retweet state for a batch). These are plain Express (like auth/search/media) — order `/author` & `/interactions` before `/:tweetId`.
 - `dev` uses `ts-node-dev --transpile-only` (**no type-checking**) — always run `tsc`/`npm run build` to catch type errors before committing.
 
 ## Common commands
@@ -74,8 +76,8 @@ npm test  --workspaces --if-present      # all Jest suites
 npm run dev      # ts-node-dev hot reload     npm test    # jest --runInBand
 
 docker compose up -d                     # local infra (+auto topics/keyspace)
-./start-dev.sh                           # all 8 services + web SPA in one terminal (logs → logs/<svc>.log)
-cd apps/web && npm run dev               # SPA on :5173 (if not using start-dev.sh)
+./scripts/start-dev.sh                           # all 8 services + web SPA in one terminal (logs → logs/<svc>.log)
+cd apps/web && npm run dev               # SPA on :5173 (if not using scripts/start-dev.sh)
 
 cd api-model && smithy build             # Smithy → OpenAPI (Smithy CLI; deps via smithy-build.json maven block)
 cd infrastructure && npx cdk synth --context env=beta   # CDK templates (no deploy)
@@ -85,8 +87,15 @@ cd infrastructure && npx cdk synth --context env=beta   # CDK templates (no depl
 
 - **Local stays on Kafka** (host port **9094**, `PLAINTEXT_HOST`); `.env` uses `KAFKA_BROKERS=localhost:9094`. Don't break the local Kafka path when touching messaging — only the prod (SQS/SNS) branch is `NODE_ENV`-gated.
 - **`packages/shared` must be built first** — services resolve `@xcloud/shared` via the workspace symlink to its built `dist/`.
+- **Prod data layer (AWS) — DEPLOYED & working end-to-end** (beta, us-east-2). tweet-service's Cassandra client is `NODE_ENV`-gated for **Amazon Keyspaces** (TLS/9142, SigV4 via `aws-sigv4-auth-cassandra-plugin` + the task IAM role, region as datacenter); feed-service has its **own** Keyspaces-gated client (`cassandra.config.ts`). **Postgres schema is created on service startup** (`ensurePostgresSchema` in `@xcloud/shared`, called from auth/user/notification `index.ts`) because RDS is in private subnets; **Keyspaces schema** is created out-of-band by `./scripts/bootstrap-beta.sh` (→ `apps/services/tweet-service/scripts/bootstrap-keyspaces.ts`). ECS injects RDS creds as `DB_USER`/`DB_PASSWORD` (secret fields) and `DB_NAME=xcloud`. Beta now has `enableSearch:true` (OpenSearch + search-service deployed; see the SigV4 search bullet below). Full flow + every gotcha: `docs/runbooks/aws-deploy.md`.
+- **Amazon Keyspaces ≠ local Cassandra — three incompatibilities (all fixed, prod-gated).** Keyspaces rejects, with opaque code 8704: (1) **LOGGED batches** → every `client.batch(...)` passes `{ logged: false }`; (2) **`LOCAL_ONE` writes** → the prod client sets default `queryOptions.consistency = localQuorum`; (3) **`SELECT COUNT(*)`** (`countRows is not yet supported`) → count client-side via `result.rowLength`. All in `tweet-service/src/repositories/tweet.repository.ts`. If you add Cassandra queries, keep them within these limits. DDL is async — the bootstrap polls `system_schema_mcs.*` and uses `SingleRegionStrategy`.
+- **RDS `rds.force_ssl=1`** — **every** PG client (auth/user/notification/feed/fanout) sets `ssl: NODE_ENV==='production' ? { rejectUnauthorized:false } : undefined`, else connections fail with `no pg_hba.conf entry … no encryption`. Don't add a new PG service without it.
+- **SNS/SQS prod publisher is FIFO-guarded.** The CDK topics/queues are **standard**, which reject `MessageDeduplicationId`. `@xcloud/shared` `sqs.ts` only sends `MessageGroupId`/`MessageDeduplicationId` when the target ARN/URL ends with `.fifo`. The producers still pass those opts (harmless on standard); don't remove the guard or `tweet.created` stops publishing → fanout dies → feed empties.
+- **Frontend on AWS = `cdn` stack (S3 + CloudFront).** SPA at `/` from a private S3 bucket; `/api/*` is a second CloudFront origin → the **ALB** (a CloudFront Function strips the `/api` prefix), so SPA calls are same-origin (no CORS, no HTTPS→HTTP mixed-content). Files are uploaded by **`./scripts/deploy-web.sh`** (CLI `s3 sync` + invalidation), **not** CDK `BucketDeployment` — its awscli-layer Lambda crashes on CDK 2.150's runtime. Build the SPA with the default `/api` base (`VITE_API_TARGET` is **dev-proxy only**, no effect on prod builds). `@aws-cdk/asset-awscli-v1`/`-node-proxy-agent-v6` are pinned in `infrastructure` (workspace-hoist gap).
+- **New Cassandra tables only auto-create on a fresh volume.** `db/cassandra-init.cql` runs once via the `cassandra-init` container (all `CREATE TABLE IF NOT EXISTS`). On an **existing** `cassandra_data` volume, adding a table to the CQL won't apply — run it manually (`docker exec xcloud-cassandra cqlsh -e "USE xcloud; CREATE TABLE ..."`) or `docker compose down -v` to recreate. Current tables: `tweets`, `tweets_by_author`, `likes`(+`_by_user`), `retweets`(+`_by_user`), `replies_by_tweet`.
 - **CDK is pinned to `aws-cdk-lib`/`aws-cdk` 2.150.0** — newer 2.x unbundled `@aws-cdk/cloud-assembly-schema` and breaks module resolution under workspaces. Don't bump without re-verifying `cdk synth`.
-- **Beta is HTTP-only** (ALB :80, no ACM); the listener + SG ingress rules are declared in `EcsStack` (not the gateway/db/cache stacks) to avoid cross-stack dependency cycles. `enableSearch:false` on beta skips OpenSearch + search-service (~$136/mo target).
+- **Beta is HTTP-only** (ALB :80, no ACM); the listener + SG ingress rules are declared in `EcsStack` (not the gateway/db/cache stacks) to avoid cross-stack dependency cycles. `enableSearch` (in `infrastructure/lib/config/environments.ts`) gates OpenSearch + search-service; **now `true` on beta** (adds ~$25/mo for a `t3.small.search` node).
+- **search-service talks to AWS OpenSearch via SigV4, not the elastic client.** It uses **`@opensearch-project/opensearch`** (+ `AwsSigv4Signer`, `@aws-sdk/credential-provider-node`), `NODE_ENV`-gated in `search-service/src/config/elasticsearch.config.ts`: prod signs requests (`service: "es"`, task-role creds, `OPENSEARCH_ENDPOINT`); local hits the plain ES container. We dropped `@elastic/elasticsearch` because its v8 client does a "product check" that **throws against an OpenSearch domain**. The OpenSearch client wraps responses in `.body` — the repository reads `response.body.hits` / `{ body: exists }`. Search only indexes events that arrive **after** it's live (no backfill). The `tweetIndex`/`userCreated`/`userUpdated` SQS queues + the `tweet.created` SNS fan-out already exist in the messaging stack regardless of `enableSearch`.
 - `SERVICE_PORTS` in `infrastructure/lib/config/constants.ts` must match each service's default `*_PORT` (health-check correctness).
 - `packages/sdk-client` is **generated** from the Smithy model (`npm run generate`, needs `brew install smithy-cli`) and **wired into `apps/web`** (tweets/users/feed; see `apps/web/src/api/twitter-client.ts`). Its `src/`+`dist-*` are gitignored — don't hand-edit; re-generate. Codegen is pinned to **0.31.1** and built with `tsc --noCheck` (see `docs/sdk-generation.md` for the why).
 - `packages/sdk-server` is the **generated Smithy server SDK** (same pipeline; CJS build, gitignored output). **user-service** serves its 4 modeled operations through generated SSDK handlers (`apps/services/user-service/src/smithy/` — Express adapter + operation impls); tweet/feed controllers use generated `*ServerInput` **types only** (devDependency). The SSDK runtime `@aws-smithy/server-common` is alpha, pinned exactly. For modeled user-service routes, change the model and regenerate — don't hand-write Express handlers around the SSDK.

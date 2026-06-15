@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { apiFetch } from "../api/client";
-import * as usersApi from "../api/users";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import * as usersApi from "../api/users";
 import type { User } from "../types";
 import LeftSidebar from "../components/layout/LeftSidebar";
 import RightSidebar from "../components/layout/RightSidebar";
@@ -11,33 +10,50 @@ import styles from "./Following.module.css";
 
 type Tab = "following" | "followers";
 
+/**
+ * Connections page — lists who a user follows / is followed by.
+ * Routes: /following (current user) and /profile/:handle/{following,followers}.
+ */
 function Following() {
   const navigate = useNavigate();
-  const { handle, tab } = useParams<{ handle: string; tab: Tab }>();
-  const [activeTab, setActiveTab] = useState<Tab>(tab === "followers" ? "followers" : "following");
+  const location = useLocation();
+  const { handle: handleParam } = useParams<{ handle: string }>();
+  const { identity } = useAuth();
+
+  const targetHandle = handleParam ?? identity?.handle ?? null;
+  const [activeTab, setActiveTab] = useState<Tab>(
+    location.pathname.endsWith("/followers") ? "followers" : "following",
+  );
+
   const [profileUser, setProfileUser] = useState<User | null>(null);
   const [following, setFollowingList] = useState<User[]>([]);
   const [followers, setFollowers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  // Resolver userId a partir del handle
-  useEffect(() => {
-    if (!handle) return;
-    usersApi.getUser(handle).then(setProfileUser).catch(() => {});
-  }, [handle]);
+  const [followedSet, setFollowedSet] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!profileUser) return;
+    if (!targetHandle) return;
+    let cancelled = false;
     setLoading(true);
-    Promise.all([
-      apiFetch<{ users: User[] }>(`/v1/users/${profileUser.userId}/following`)
-        .then((r) => setFollowingList(r.users ?? []))
-        .catch(() => setFollowingList([])),
-      apiFetch<{ users: User[] }>(`/v1/users/${profileUser.userId}/followers`)
-        .then((r) => setFollowers(r.users ?? []))
-        .catch(() => setFollowers([])),
-    ]).finally(() => setLoading(false));
-  }, [profileUser]);
+    usersApi
+      .getUser(targetHandle)
+      .then((u) => {
+        if (!cancelled) setProfileUser(u);
+        return Promise.all([usersApi.getFollowing(u.userId), usersApi.getFollowers(u.userId)]);
+      })
+      .then(async ([flw, fwr]) => {
+        if (cancelled) return;
+        setFollowingList(flw);
+        setFollowers(fwr);
+        // Which of these users does the current viewer already follow?
+        const ids = Array.from(new Set([...flw, ...fwr].map((u) => u.userId)));
+        const status = await usersApi.getFollowingStatus(ids).catch((): string[] => []);
+        if (!cancelled) setFollowedSet(new Set(status));
+      })
+      .catch(() => { if (!cancelled) { setFollowingList([]); setFollowers([]); } })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [targetHandle]);
 
   const list = activeTab === "following" ? following : followers;
 
@@ -54,8 +70,8 @@ function Following() {
             </svg>
           </button>
           <div className={styles.topBarInfo}>
-            <span className={styles.displayName}>{profileUser?.displayName ?? handle}</span>
-            <span className={styles.handle}>{handle ? `@${handle}` : ""}</span>
+            <span className={styles.displayName}>{profileUser?.displayName ?? targetHandle ?? ""}</span>
+            <span className={styles.handle}>{targetHandle ? `@${targetHandle}` : ""}</span>
           </div>
         </div>
 
@@ -75,6 +91,7 @@ function Following() {
           </button>
         </div>
 
+        {/* User list */}
         {loading && <p className={styles.empty}>Loading…</p>}
 
         {!loading && list.length === 0 && (
@@ -83,8 +100,13 @@ function Following() {
           </p>
         )}
 
-        {list.map((user) => (
-          <UserRow key={user.userId} user={user} onProfile={() => navigate(`/profile/${user.handle}`)} />
+        {!loading && list.map((user) => (
+          <UserRow
+            key={user.userId}
+            user={user}
+            initialFollowing={followedSet.has(user.userId)}
+            onProfile={() => navigate(`/profile/${user.handle}`)}
+          />
         ))}
       </main>
 
@@ -93,33 +115,36 @@ function Following() {
   );
 }
 
-function UserRow({ user, onProfile }: { user: User; onProfile: () => void }) {
+// Real follow/unfollow toggle reflecting the viewer's actual state.
+function UserRow({
+  user,
+  initialFollowing,
+  onProfile,
+}: {
+  user: User;
+  initialFollowing: boolean;
+  onProfile: () => void;
+}) {
   const { identity } = useAuth();
   const isOwnProfile = identity?.userId === user.userId;
-  const [isFollowing, setIsFollowing] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(initialFollowing);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    apiFetch<{ following: boolean }>(`/v1/users/${user.userId}/follow`)
-      .then((r) => setIsFollowing(r.following))
-      .catch(() => {});
-  }, [user.userId]);
+  // Re-sync if the resolved status arrives after first render.
+  useEffect(() => { setIsFollowing(initialFollowing); }, [initialFollowing]);
 
   const handleToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (loading) return;
+    const was = isFollowing;
+    setIsFollowing(!was);
     setLoading(true);
     try {
-      if (isFollowing) {
-        await usersApi.unfollowUser(user.userId);
-        setIsFollowing(false);
-      } else {
-        await usersApi.followUser(user.userId);
-        setIsFollowing(true);
-      }
+      if (was) await usersApi.unfollowUser(user.userId);
+      else await usersApi.followUser(user.userId);
     } catch {
       // revert on error
-      setIsFollowing((p) => !p);
+      setIsFollowing(was);
     } finally {
       setLoading(false);
     }
@@ -127,10 +152,10 @@ function UserRow({ user, onProfile }: { user: User; onProfile: () => void }) {
 
   return (
     <div className={styles.userRow}>
-      <div className={styles.avatarCol} onClick={onProfile}>
-        <Avatar size={48} />
+      <div className={styles.avatarCol} onClick={onProfile} style={{ cursor: "pointer" }}>
+        <Avatar size={48} src={user.avatarUrl || undefined} />
       </div>
-      <div className={styles.userInfo} onClick={onProfile}>
+      <div className={styles.userInfo} onClick={onProfile} style={{ cursor: "pointer" }}>
         <span className={styles.name}>{user.displayName}</span>
         <span className={styles.handle}>@{user.handle}</span>
         {user.bio && <p className={styles.bio}>{user.bio}</p>}

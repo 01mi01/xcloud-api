@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { Pool } from "pg";
 import { dbConfig, JWT_SECRET, JWT_EXPIRES, SALT_ROUNDS } from "../config/cognito.config";
+import { publishUserCreated } from "../events/user.producer";
 
 const pool = new Pool(dbConfig);
 
@@ -57,6 +58,10 @@ export const registerUser = async (handle: string, email: string, password: stri
     } finally {
         client.release();
     }
+
+    // Publish outside the transaction so a messaging hiccup never rolls back a
+    // committed registration. search-service indexes the new user from this.
+    await publishUserCreated({ userId, handle, displayName: handle, createdAt: new Date().toISOString() });
 
     // §3.1 — registration returns a JWT so the client is logged in immediately.
     return { userId, token: issueToken(userId, handle, email, "user") };

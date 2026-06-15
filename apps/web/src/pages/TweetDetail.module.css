@@ -431,3 +431,11 @@
     font-size: var(--font-size-lg);
   }
 }
+/* Active states for the wired stat-bar buttons */
+.retweeted {
+  color: var(--color-success);
+}
+
+.liked {
+  color: var(--color-danger);
+}

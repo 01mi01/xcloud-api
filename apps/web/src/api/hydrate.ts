@@ -1,6 +1,6 @@
 import type { RawTweet, Tweet, User } from "../types";
-import { apiFetch } from "./client";
-import { getLikeStatus, getRetweetStatus } from "./tweets";
+import { apiFetch, getToken } from "./client";
+import { getInteractions } from "./tweets";
 
 const BOOKMARK_KEY = "xcloud_bookmarks";
 function getBookmarkedIds(): Set<string> {
@@ -15,7 +15,7 @@ function getBookmarkedIds(): Set<string> {
  * (it serves GET /v1/users/:handle), so we provide a graceful fallback that
  * synthesizes a minimal `User` object when the lookup is not available.
  */
-async function getUserById(userId: string): Promise<User | null> {
+export async function getUserById(userId: string): Promise<User | null> {
   try {
     return await apiFetch<User>(`/v1/users/by-id/${encodeURIComponent(userId)}`);
   } catch {
@@ -43,19 +43,23 @@ function fallbackUser(userId: string): User {
  */
 export async function hydrateTweets(raw: RawTweet[], currentUserId?: string): Promise<Tweet[]> {
   const uniqueAuthorIds = Array.from(new Set(raw.map((t) => t.authorId)));
-  const fetched = await Promise.all(uniqueAuthorIds.map((id) => getUserById(id)));
+
+  // Author profiles + the viewer's like/retweet state, fetched in parallel.
+  const [fetched, interactions] = await Promise.all([
+    Promise.all(uniqueAuthorIds.map((id) => getUserById(id))),
+    raw.length && getToken()
+      ? getInteractions(raw.map((t) => t.tweetId)).catch(() => ({ liked: [], retweeted: [] }))
+      : Promise.resolve({ liked: [], retweeted: [] }),
+  ]);
+
   const byId = new Map<string, User>();
   uniqueAuthorIds.forEach((id, i) => {
     byId.set(id, fetched[i] ?? fallbackUser(id));
   });
 
-  // Fetch like and retweet status for each tweet in parallel when user is logged in
-  const [likeStatuses, retweetStatuses] = currentUserId
-    ? await Promise.all([
-        Promise.all(raw.map((t) => getLikeStatus(t.tweetId).then((r) => r.liked).catch(() => false))),
-        Promise.all(raw.map((t) => getRetweetStatus(t.tweetId).then((r) => r.retweeted).catch(() => false))),
-      ])
-    : [raw.map(() => false), raw.map(() => false)];
+  void currentUserId; // viewer is now identified by the JWT sent with getInteractions
+  const likedSet = new Set(interactions.liked);
+  const retweetedSet = new Set(interactions.retweeted);
 
   const bookmarkedIds = getBookmarkedIds();
 
@@ -85,8 +89,8 @@ export async function hydrateTweets(raw: RawTweet[], currentUserId?: string): Pr
     repliesCount:        t.repliesCount ?? 0,
     createdAt:           t.createdAt,
     replyToTweetId:      t.replyToTweetId ?? null,
-    liked:               likeStatuses[i],
-    retweeted:           retweetStatuses[i],
+    liked:               likedSet.has(t.tweetId),
+    retweeted:           retweetedSet.has(t.tweetId),
     bookmarked:          bookmarkedIds.has(t.tweetId),
     replyToAuthorHandle: replyToHandles[i],
   }));

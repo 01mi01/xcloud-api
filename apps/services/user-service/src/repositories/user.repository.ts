@@ -18,6 +18,12 @@ export const findById = async (userId: string): Promise<User | null> => {
     return rows[0] ? fromRow(rows[0]) : null;
 };
 
+// All users (capped) — used to backfill the search index (republish user.updated).
+export const findAll = async (limit = 1000): Promise<User[]> => {
+    const { rows } = await pool.query(`${WITH_COUNTS} ORDER BY u.handle LIMIT $1`, [limit]);
+    return rows.map(fromRow);
+};
+
 export const upsert = async (userId: string, handle: string): Promise<User> => {
     const { rows } = await pool.query(
         `INSERT INTO users (user_id, handle, display_name)
@@ -75,6 +81,16 @@ export const deleteFollow = async (followerId: string, followingId: string): Pro
         [followerId, followingId]
     );
     return (rowCount ?? 0) > 0;
+};
+
+// Of `candidateIds`, which ones does `followerId` already follow.
+export const getFollowedSubset = async (followerId: string, candidateIds: string[]): Promise<string[]> => {
+    if (candidateIds.length === 0) return [];
+    const { rows } = await pool.query(
+        `SELECT following_id FROM follows WHERE follower_id = $1 AND following_id = ANY($2)`,
+        [followerId, candidateIds]
+    );
+    return rows.map((r: { following_id: string }) => r.following_id);
 };
 
 export const followExists = async (followerId: string, followingId: string): Promise<boolean> => {

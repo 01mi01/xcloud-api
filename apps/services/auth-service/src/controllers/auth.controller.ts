@@ -3,6 +3,8 @@ import { JwtPayload } from "jsonwebtoken";
 import { registerUser, loginUser, assignUserToGroup } from "../services/auth.service";
 
 // §3.1 — handle: 4-20 chars, only letters, numbers and underscore.
+// Matches the Smithy `Handle` contract (com.twitter#Handle) that user-service's
+// GetUser enforces via the SSDK, so a handle that can be created can always be fetched.
 const HANDLE_REGEX = /^[a-zA-Z0-9_]{4,20}$/;
 // Basic email shape check.
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

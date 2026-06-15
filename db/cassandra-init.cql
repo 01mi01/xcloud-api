@@ -57,3 +57,11 @@ CREATE TABLE IF NOT EXISTS retweets_by_user (
     created_at TIMESTAMP,
     PRIMARY KEY (user_id, tweet_id)
 );
+
+-- Replies of a tweet, newest first (the parent tweet_id is the partition key)
+CREATE TABLE IF NOT EXISTS replies_by_tweet (
+    reply_to_tweet_id UUID,
+    created_at        TIMESTAMP,
+    tweet_id          UUID,
+    PRIMARY KEY (reply_to_tweet_id, created_at, tweet_id)
+) WITH CLUSTERING ORDER BY (created_at DESC);

@@ -46,7 +46,10 @@ export class CognitoConstruct extends Construct {
     // Resource server with custom scopes
     // Cognito rejects URLs with :// as the name — use a simple identifier instead
     this.resourceServer = this.userPool.addResourceServer('ResourceServer', {
-      identifier: 'xcloud-api',
+      // identifier may be a URL, but the NAME must match [\w\s+=,.@-]+ (no "://").
+      // Without an explicit name CDK defaults it to the identifier → 400.
+      identifier: 'https://api.xcloud.app',
+      userPoolResourceServerName: 'xcloud-api',
       scopes: [
         { scopeName: 'read',  scopeDescription: 'Read access'  },
         { scopeName: 'write', scopeDescription: 'Write access' },

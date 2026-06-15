@@ -5,8 +5,11 @@ import * as ctrl from "../controllers/tweet.controller";
 const router = Router();
 
 router.post("/", verifyToken, ctrl.createTweet);
-router.get("/by-author/:authorId", ctrl.getTweetsByAuthor);
-router.get("/liked-by/:userId", ctrl.getLikedByUser);
+// Per-viewer like/retweet state for a batch of tweetIds (authed).
+router.post("/interactions", verifyToken, ctrl.getInteractions);
+// Two-segment literal paths — must not be shadowed by the single-segment /:tweetId.
+router.get("/author/:authorId", ctrl.getTweetsByAuthor);
+router.get("/liked/:userId", ctrl.getLikedTweets);
 router.get("/:tweetId", ctrl.getTweet);
 router.delete("/:tweetId", verifyToken, ctrl.deleteTweet);
 router.get("/:tweetId/replies", ctrl.getReplies);

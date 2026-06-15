@@ -54,7 +54,7 @@ new EcsStack(app, `${prefix}-ecs`, {
   search,
 });
 
-new CdnStack(app, `${prefix}-cdn`, { ...stackProps, storage, alb: gateway.alb });
+new CdnStack(app, `${prefix}-cdn`, { ...stackProps, alb: gateway.alb });
 
 new MonitoringStack(app, `${prefix}-monitoring`, stackProps);
 

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Tweet, RawTweet } from "../../types";
 import * as tweetsApi from "../../api/tweets";
+import { ApiError } from "../../api/client";
 import Avatar from "../common/Avatar";
 import styles from "./ReplyModal.module.css";
 
@@ -15,6 +16,7 @@ interface Props {
 function ReplyModal({ tweet, onClose, onReply }: Props) {
   const [content, setContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const remaining = MAX_CHARS - content.length;
   const isEmpty = content.trim().length === 0;
@@ -23,15 +25,17 @@ function ReplyModal({ tweet, onClose, onReply }: Props) {
   const handleReply = async () => {
     if (isEmpty || isOver || submitting) return;
     setSubmitting(true);
+    setError(null);
     try {
-      const { tweet: newReply } = await tweetsApi.createTweet({
+      // Persist the reply as a tweet with replyToTweetId.
+      const { tweet: reply } = await tweetsApi.createTweet({
         content,
         replyToTweetId: tweet.tweetId,
       });
-      onReply(newReply);
+      onReply(reply);
       onClose();
-    } catch {
-      // silencioso — el usuario puede reintentar
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to reply.");
     } finally {
       setSubmitting(false);
     }
@@ -86,6 +90,7 @@ function ReplyModal({ tweet, onClose, onReply }: Props) {
               rows={3}
               autoFocus
             />
+            {error && <p style={{ color: "#f4212e", fontSize: 14, margin: "4px 0 0" }}>{error}</p>}
             <div className={styles.footer}>
               <div />
               <div className={styles.right2}>

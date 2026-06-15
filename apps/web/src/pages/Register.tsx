@@ -6,6 +6,9 @@ import styles from "./Login.module.css";
 
 const X_PATH = "M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z";
 
+// Must match the Smithy `Handle` contract enforced by user-service GetUser.
+const HANDLE_PATTERN = /^[a-zA-Z0-9_]{4,20}$/;
+
 function Register() {
   const navigate = useNavigate();
   const { register } = useAuth();
@@ -19,6 +22,10 @@ function Register() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    if (!HANDLE_PATTERN.test(handle)) {
+      setError("Username must be 4-20 characters: letters, numbers and underscore only (no spaces or hyphens).");
+      return;
+    }
     if (password !== confirmPassword) {
       setError("Passwords do not match");
       return;

@@ -10,6 +10,9 @@ jest.mock("pg", () => {
     return { Pool: jest.fn(() => ({ query, connect: jest.fn(async () => mockClient) })) };
 });
 jest.mock("bcrypt");
+// registerUser publishes user.created via @xcloud/shared (Kafka locally). Mock
+// the producer so tests don't open a real broker connection (slow + open handle).
+jest.mock("../src/events/user.producer");
 
 const mockPool  = new Pool({}) as jest.Mocked<Pool>;
 const mockQuery = mockPool.query as jest.Mock;
@@ -22,8 +25,10 @@ describe("registerUser", () => {
         mockQuery.mockResolvedValueOnce({ rows: [] }); // no existing email
         (mockBcrypt.hash as jest.Mock).mockResolvedValue("hashed");
 
-        const userId = await svc.registerUser("alice", "alice@example.com", "secret");
-        expect(typeof userId).toBe("string");
+        const result = await svc.registerUser("alice", "alice@example.com", "secret");
+        // registerUser now returns { userId, token } (register issues a JWT).
+        expect(typeof result.userId).toBe("string");
+        expect(typeof result.token).toBe("string");
 
         const client = await (mockPool as unknown as { connect(): Promise<{ query: jest.Mock }> }).connect();
         const statements = client.query.mock.calls.map((c) => String(c[0]));

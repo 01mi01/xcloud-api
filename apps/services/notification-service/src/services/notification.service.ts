@@ -13,13 +13,6 @@ export interface FollowEvent {
     timestamp:   string;
 }
 
-export interface RetweetEvent {
-    tweetId:      string;
-    userId:       string;   // quien retweeteó (actor)
-    targetUserId: string;   // autor del tweet (destinatario)
-    timestamp:    string;
-}
-
 export interface ReplyEvent {
     replyTweetId:  string;  // el tweet de respuesta
     parentTweetId: string;  // el tweet al que se respondió
@@ -55,6 +48,31 @@ export const processLikeEvent = async (event: LikeEvent, tweetAuthorId: string):
     wsPublisher.pushToUser(tweetAuthorId, notification);
 };
 
+export interface RetweetEvent {
+    tweetId:     string;
+    retweeterId: string;
+    authorId:    string;
+    timestamp:   string;
+}
+
+/**
+ * Procesa un evento de retweet.
+ * El autor original recibe la notificación; el retweeter es el actor.
+ */
+export const processRetweetEvent = async (event: RetweetEvent): Promise<void> => {
+    // No notificar si el usuario retuitea su propio tweet
+    if (event.retweeterId === event.authorId) return;
+
+    const notification = await repo.insert(
+        event.authorId,      // El autor original recibe la notificación
+        event.retweeterId,   // El que retuiteó es el actor
+        "retweet",
+        event.tweetId
+    );
+
+    wsPublisher.pushToUser(event.authorId, notification);
+};
+
 /**
  * Procesa un evento de follow.
  */
@@ -67,22 +85,6 @@ export const processFollowEvent = async (event: FollowEvent): Promise<void> => {
     );
 
     wsPublisher.pushToUser(event.followingId, notification);
-};
-
-/**
- * Procesa un evento de retweet.
- */
-export const processRetweetEvent = async (event: RetweetEvent): Promise<void> => {
-    if (event.userId === event.targetUserId) return; // no notificar self-retweet
-
-    const notification = await repo.insert(
-        event.targetUserId,  // el autor del tweet recibe la notificación
-        event.userId,        // quien retweeteó es el actor
-        "retweet",
-        event.tweetId
-    );
-
-    wsPublisher.pushToUser(event.targetUserId, notification);
 };
 
 /**
