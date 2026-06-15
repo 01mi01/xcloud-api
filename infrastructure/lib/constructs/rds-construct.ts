@@ -28,7 +28,10 @@ export class RdsConstruct extends Construct {
       username: 'xcloud_admin',
     });
 
-    const [instanceClass, instanceSize] = props.instanceClass.split('.');
+    // instanceClass format: "db.t4g.micro" → parts: ["db","t4g","micro"]
+    const parts = props.instanceClass.split('.');
+    const instanceClass = parts[1];  // e.g. "t4g"
+    const instanceSize  = parts[2];  // e.g. "micro"
     this.instance = new rds.DatabaseInstance(this, 'Instance', {
       engine: rds.DatabaseInstanceEngine.postgres({
         version: rds.PostgresEngineVersion.VER_16,

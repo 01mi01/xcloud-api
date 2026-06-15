@@ -1,7 +1,6 @@
 import * as cdk        from 'aws-cdk-lib';
 import * as ec2        from 'aws-cdk-lib/aws-ec2';
 import * as elasticache from 'aws-cdk-lib/aws-elasticache';
-import * as ssm        from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 
 export interface RedisConstructProps {
@@ -37,9 +36,10 @@ export class RedisConstruct extends Construct {
       autoMinorVersionUpgrade: true,
     });
 
-    new ssm.StringParameter(this, 'EndpointParam', {
-      parameterName: '/xcloud/redis/endpoint',
-      stringValue:   this.cluster.attrRedisEndpointAddress,
+    // Endpoint exported as CfnOutput — consumed by ECS stack via Fn::ImportValue
+    new cdk.CfnOutput(this, 'EndpointAddress', {
+      exportName: 'xcloud-beta-redis-endpoint',
+      value: this.cluster.attrRedisEndpointAddress,
     });
   }
 }

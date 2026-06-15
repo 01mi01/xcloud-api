@@ -27,6 +27,7 @@
     "@types/jest": "^29.5.14",
     "@types/jsonwebtoken": "^9.0.9",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
     "@types/uuid": "^10.0.0",
     "@xcloud/sdk-server": "*",
     "jest": "^29.7.0",

@@ -44,8 +44,9 @@ export class CognitoConstruct extends Construct {
     });
 
     // Resource server with custom scopes
+    // Cognito rejects URLs with :// as the name — use a simple identifier instead
     this.resourceServer = this.userPool.addResourceServer('ResourceServer', {
-      identifier: 'https://api.xcloud.app',
+      identifier: 'xcloud-api',
       scopes: [
         { scopeName: 'read',  scopeDescription: 'Read access'  },
         { scopeName: 'write', scopeDescription: 'Write access' },

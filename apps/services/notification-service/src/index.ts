@@ -19,7 +19,12 @@ const main = async (): Promise<void> => {
         try {
             // Start concurrently: in production each consumer long-polls its own
             // SQS queue (a blocking loop), so they must not be awaited sequentially.
-            await Promise.all([startLikeConsumer(), startFollowConsumer(), startRetweetConsumer(), startReplyConsumer(), startMentionConsumer()]);
+            // Optional consumers only start if their queue URL is configured.
+            const consumers = [startLikeConsumer(), startFollowConsumer()];
+            if (process.env.RETWEET_EVENT_QUEUE_URL) consumers.push(startRetweetConsumer());
+            if (process.env.REPLY_EVENT_QUEUE_URL)   consumers.push(startReplyConsumer());
+            if (process.env.MENTION_EVENT_QUEUE_URL) consumers.push(startMentionConsumer());
+            await Promise.all(consumers);
             console.log("Notification Service — event consumers running");
         } catch (err) {
             if (attempt >= 5) {

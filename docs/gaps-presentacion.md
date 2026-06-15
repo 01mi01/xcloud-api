@@ -1,6 +1,6 @@
 # X(dot)com — Gaps de Implementación vs. Documento de Diseño Técnico
 
-**Fecha de auditoría:** 2026-06-14 (actualizado)  
+**Fecha de auditoría:** 2026-06-14 (actualizado post-pull)  
 **Rama auditada:** `main`  
 **Preparado por:** Claude Code (auditoría automática)  
 **Presentación ante:** PhD. Jhesser Guzmán
@@ -13,220 +13,169 @@
 |---|---|---|---|
 | Endpoints REST | 19 | 19 | 0 |
 | Topics Kafka / Eventos | 3 | 3 | 0 |
-| Tablas de base de datos | 8 | 7 | 1 (parcial) |
-| Stacks CDK (infraestructura) | 11 | 11 (en xcloud-api/infrastructure) | 0 |
+| Tablas de base de datos | 8 | 8 | 0 |
+| Stacks CDK (infraestructura) | 11 | 11 | 0 |
 | Servicios backend corriendo | 8 | 8 | 0 |
-| WebSocket / Tiempo real | 1 | Parcial (publisher existe, server no activo) | — |
-| Repo xcloud-infrastructure separado | — | Vacío | Crítico |
+| WebSocket / Tiempo real | 1 | ✅ Implementado | 0 |
+| Repo xcloud-infrastructure separado | 1 | ✅ Sincronizado | 0 |
+| Seguridad (bcrypt→Argon2id, rate limit, validación handle, register token) | 4 | ✅ Implementados | 0 |
 
-**Estado general:** El sistema corre y cubre todos los flujos core. Los gaps restantes son de seguridad (bcrypt→Argon2id), WebSocket en tiempo real, y el repositorio de infraestructura separado.
+**Estado general:** Sistema completo y funcional. Todos los gaps críticos resueltos. Quedan solo items de Fase 2 (GDPR, búsqueda federada en OpenSearch, gRPC secundarios).
 
 ---
 
 ## 1. ENDPOINTS — TODOS IMPLEMENTADOS ✅
 
-### 1.1 POST/DELETE /v1/tweets/{tweetId}/retweet — RESUELTO ✅ (2026-06-13)
-Retweet y unretweet funcionales con tablas `retweets` y `retweets_by_user` en Cassandra.
-
-### 1.2 GET /v1/users/search — RESUELTO ✅ (2026-06-13)
-Búsqueda de usuarios por handle y displayName con LIKE en PostgreSQL.
-
-### 1.3 GET /v1/tweets/by-author/:authorId — RESUELTO ✅ (2026-06-13)
-Posts por autor para la página de perfil.
-
-### 1.4 GET /v1/tweets/liked-by/:userId — RESUELTO ✅ (2026-06-13)
-Tweets likeados por usuario para la tab Likes del perfil.
-
-### 1.5 GET/POST/DELETE /v1/tweets/{tweetId}/retweet — RESUELTO ✅ (2026-06-13)
-Estado de retweet por tweet y usuario.
-
-### 1.6 GET /v1/users/:userId/following — RESUELTO ✅ (2026-06-14)
-Lista de usuarios que sigue un perfil.
-
-### 1.7 GET /v1/users/:userId/followers — RESUELTO ✅ (2026-06-14)
-Lista de seguidores de un perfil.
-
-### 1.8 GET /v1/users/:userId/follow — RESUELTO ✅ (2026-06-14)
-Estado real de follow entre el usuario autenticado y otro usuario.
-
-### 1.9 GET /v1/search?type=users — Fase 2 ⚠️
-
-**Definido en:** Diseño §3.4  
-La búsqueda de usuarios vía Elasticsearch (`type=users`) retorna 400. En su lugar, la búsqueda de personas se hace directamente contra user-service con LIKE en PostgreSQL (`/v1/users/search`), lo que cubre el caso de uso. Documentar como "Fase 2: migración a OpenSearch para búsqueda federada".
-
-### 1.10 DELETE /v1/users/me — Fase 2 ⚠️
-
-**Definido en:** Diseño §6.4 (Seguridad / GDPR-CCPA)  
-El endpoint de baja de cuenta (hard delete PostgreSQL + soft delete Cassandra) no está implementado. Admisible como "Fase 2 / GDPR compliance".
+| Servicio | Endpoints | Estado |
+|---|---|---|
+| Auth Service | register, login, me | ✅ |
+| User Service | get, search, update, follow, unfollow, follow-status, following, followers | ✅ |
+| Tweet Service | create, get, delete, replies, like, unlike, like-status, retweet, unretweet, retweet-status, by-author, liked-by | ✅ |
+| Feed Service | feed con cursor pagination | ✅ |
+| Notification Service | list, mark-read | ✅ |
+| Search Service | search tweets (OpenSearch) | ✅ |
 
 ---
 
-## 2. MODELO DE DATOS — GAPS
+## 2. SEGURIDAD — TODOS RESUELTOS ✅
 
-### 2.1 Campo `is_deleted` ausente en tabla `tweets` de Cassandra ⚠️
+### 2.1 bcrypt → Argon2id — RESUELTO ✅ (2026-06-14)
+`auth.service.ts` migrado a `argon2` (package npm). El diseño §6.4 prohibía bcrypt explícitamente.
 
-**Definido en:** Diseño §5.2 y §6.1  
-**Archivo afectado:** [db/cassandra-init.cql](../db/cassandra-init.cql)
+### 2.2 Rate limiting en POST /v1/auth/login — RESUELTO ✅ (2026-06-14)
+Middleware en `apps/services/auth-service/src/middleware/rate-limit.ts`: 10 intentos/min por IP → 429. Sin dependencia externa (implementación en memoria).
 
-El diseño especifica soft-delete en Cassandra para soporte GDPR. El CQL actual no tiene este campo en `tweets` ni en `tweets_by_author`. Vinculado al gap de `DELETE /v1/users/me` — ambos son Fase 2.
+### 2.3 Validación de handle en registro — RESUELTO ✅ (2026-06-14)
+Regex `[a-zA-Z0-9_]{4,20}` + validación de email y password mínimo 8 chars en `auth.controller.ts`.
 
----
-
-### 2.2 `likes_count` y `retweet_count` como INT, no COUNTER ⚠️
-
-**Definido en:** Diseño §6.1  
-**Archivo afectado:** [db/cassandra-init.cql](../db/cassandra-init.cql)
-
-El diseño especifica tipo `COUNTER` para consistencia eventual en actualizaciones concurrentes. El CQL actual los define como `INT`. A baja escala (dev/demo) no es visible. Documentar como decisión de implementación: los COUNTER en Cassandra no pueden mezclarse con columnas regulares en la misma tabla, por lo que se optó por INT con lógica de incremento atómico en el service.
+### 2.4 Response de /register devuelve JWT — RESUELTO ✅ (2026-06-14)
+`POST /v1/auth/register` responde `{ userId, token }` según diseño §3.1. El cliente ya no necesita login extra tras el registro.
 
 ---
 
-### 2.3 TTL de datos en Cassandra (7 años tweets, 2 años likes) — No configurado ⚠️
+## 3. WEBSOCKETS — RESUELTO ✅
 
-**Definido en:** Diseño §6.9 (Retención de datos)  
-No hay `DEFAULT TTL` en las tablas. Solo aplica en producción con AWS Keyspaces. Admisible como "configuración de producción".
+### 3.1 Notificaciones en tiempo real — RESUELTO ✅ (2026-06-14)
 
----
+**Definido en:** Diseño §4.3 y §5.3
 
-## 3. SEGURIDAD — GAPS PENDIENTES
-
-### 3.1 bcrypt en lugar de Argon2id ⚠️ PENDIENTE
-
-**Definido en:** Diseño §6.4 — "Passwords hasheados con **Argon2id** (nunca bcrypt en nuevas implementaciones)."  
-**Archivo afectado:** [apps/services/auth-service/src/services/auth.service.ts](../apps/services/auth-service/src/services/auth.service.ts)
-
-```typescript
-import bcrypt from "bcrypt";  // debe ser: import argon2 from "argon2"
-```
-
-El diseño prohíbe explícitamente bcrypt. **Alto impacto en presentación.** Esfuerzo: 30 min.
+Implementado completamente:
+- `ws.server.ts` adjunta `WebSocketServer` al servidor HTTP en `/ws`
+- Autentica JWT por query param, registra conexión por userId
+- `notification-service/index.ts` arranca WS junto al HTTP server
+- **3 tipos de notificación** entregados en vivo: like ✅, follow ✅, retweet ✅
+- Frontend: `notifications-ws.ts` con reconexión automática + prepend en vivo en la página Notifications
+- Proxy `/ws` configurado en `vite.config.ts`
+- La página Notifications muestra nombre/@handle del actor (no UUID)
 
 ---
 
-### 3.2 Rate limiting en POST /v1/auth/login ⚠️ PENDIENTE
+## 4. MODELO DE DATOS — RESUELTO ✅
 
-**Definido en:** Diseño §3.1 — "429 → rate limit excedido (máx 10 intentos/min por IP)"  
-**Archivo afectado:** [apps/services/auth-service/src/routes/auth.routes.ts](../apps/services/auth-service/src/routes/auth.routes.ts)
+### 4.1 Tablas de retweets y replies_count — RESUELTO ✅ (2026-06-14)
+Migraciones `retweets`, `retweets_by_user` y campo `replies_count` añadidos en `db/cassandra-init.cql`.
 
-El route de login no tiene middleware de rate limiting. El error 429 nunca se devuelve. Esfuerzo: 30 min.
+### 4.2 `likes_count` y `retweet_count` como INT, no COUNTER ⚠️
+El diseño §6.1 especifica tipo `COUNTER`. Se mantiene como INT con lógica de incremento atómico en el service. **Decisión de implementación documentada**: los COUNTER en Cassandra no pueden mezclarse con columnas regulares en la misma tabla. A escala demo no es visible.
 
-```typescript
-import rateLimit from "express-rate-limit";
-const loginLimiter = rateLimit({ windowMs: 60_000, max: 10 });
-router.post("/login", loginLimiter, login);
-```
+### 4.3 TTL de datos en Cassandra — Solo producción ⚠️
+TTL (7 años tweets, 2 años likes) aplica solo en AWS Keyspaces. No configurado en local. **Fase 2 / configuración de producción.**
 
----
-
-### 3.3 Validación de formato de `handle` en registro ⚠️ PENDIENTE
-
-**Definido en:** Diseño §3.1 — "handle: solo `[a-zA-Z0-9_]`, 4-20 chars"  
-**Archivo afectado:** [apps/services/auth-service/src/controllers/auth.controller.ts](../apps/services/auth-service/src/controllers/auth.controller.ts)
-
-El controller no valida formato ni longitud del handle. Esfuerzo: 20 min.
+### 4.4 Campo `is_deleted` en Cassandra — Fase 2 ⚠️
+Vinculado a `DELETE /v1/users/me` (GDPR). Ambos son Fase 2.
 
 ---
 
-### 3.4 Response de /register sin token ⚠️ PENDIENTE
+## 5. MENSAJERÍA — COMPLETO ✅
 
-**Definido en:** Diseño §3.1 — `response 201: { "userId": string, "token": JWT }`  
-**Archivo afectado:** [apps/services/auth-service/src/controllers/auth.controller.ts](../apps/services/auth-service/src/controllers/auth.controller.ts)
+| Topic | Productor | Consumidores | Estado |
+|---|---|---|---|
+| `tweet.created` | Tweet Service | Fan-out Service, Search Service | ✅ |
+| `tweet.liked` | Tweet Service | Notification Service | ✅ |
+| `tweet.replied` | Tweet Service | Notification Service | ✅ |
+| `tweet.retweeted` | Tweet Service | Notification Service | ✅ |
+| `user.followed` | User Service | Notification Service | ✅ |
 
-```typescript
-// Implementado actualmente:
-res.status(201).json({ userId, message: "User registered successfully" });
-// Diseño espera:
-res.status(201).json({ userId, token: JWT });
-```
-
-El cliente debe hacer login por separado tras el registro. Esfuerzo: 15 min.
+> El evento `user.followed` ahora se publica via `follow.producer.ts` en user-service al ejecutar el follow.
 
 ---
 
-## 4. WEBSOCKETS — INCOMPLETO ⚠️ PENDIENTE
+## 6. SEARCH — MIGRADO A OPENSEARCH ✅
 
-**Definido en:** Diseño §4.3 (Flujo de Notificaciones en Tiempo Real) y §5.3  
-**Archivos relevantes:**
-- [apps/services/notification-service/src/websocket/ws.publisher.ts](../apps/services/notification-service/src/websocket/ws.publisher.ts) — existe y está bien implementado
-- [apps/services/notification-service/src/index.ts](../apps/services/notification-service/src/index.ts) — **no inicia servidor WebSocket**
+### 6.1 Elasticsearch → OpenSearch — RESUELTO ✅ (2026-06-14)
+Migración completa a `@opensearch-project/opensearch`. El cliente `@elastic/elasticsearch` rompía contra OpenSearch en AWS por el product-check del handshake TLS. Docker local actualizado a `opensearchproject/opensearch`. Alineado con el stack AWS (OpenSearch Service).
 
-El publisher tiene `registerConnection`, `removeConnection` y `pushToUser` implementados. El `index.ts` solo inicia el servidor HTTP — nunca arranca `ws.Server`. Las notificaciones se guardan en DB correctamente pero no se entregan en tiempo real.
-
-**Lo que falta:**
-- `wss = new WebSocket.Server({ server: httpServer })` en index.ts
-- Autenticar JWT en el evento `connection`, llamar `registerConnection(userId, ws)`
-- En evento `close`: llamar `removeConnection(userId, ws)`
-
-Esfuerzo estimado: 2 horas.
+### 6.2 GET /search?type=users — Fase 2 ⚠️
+La búsqueda de usuarios se hace vía user-service con LIKE en PostgreSQL (`/v1/users/search`), no vía OpenSearch. Cubre el caso de uso para demo. Documentar como "Fase 2: búsqueda federada en OpenSearch".
 
 ---
 
-## 5. gRPC — PARCIALMENTE IMPLEMENTADO ⚠️
+## 7. INFRAESTRUCTURA — COMPLETO ✅
+
+### 7.1 Repo xcloud-infrastructure — RESUELTO ✅ (2026-06-14)
+Los 11 stacks CDK copiados desde `xcloud-api/infrastructure/` al repo separado `xcloud-infrastructure/`. Dependencias instaladas. El docente puede revisar ambos repos.
+
+### 7.2 11 Stacks CDK implementados ✅
+
+| Stack | Estado |
+|---|---|
+| NetworkingStack | ✅ VPC, subnets, NAT |
+| DatabaseStack | ✅ RDS PostgreSQL, Keyspaces |
+| CacheStack | ✅ ElastiCache Redis |
+| MessagingStack | ✅ SQS + SNS fan-out |
+| SearchStack | ✅ OpenSearch (beta: deshabilitado) |
+| StorageStack | ✅ S3 media |
+| AuthStack | ✅ Cognito User Pool + grupos |
+| EcsStack | ✅ Fargate 8 servicios + ALB |
+| GatewayStack | ✅ API Gateway |
+| CdnStack | ✅ CloudFront + S3 SPA |
+| MonitoringStack | ✅ CloudWatch alarmas |
+
+---
+
+## 8. gRPC — PARCIALMENTE IMPLEMENTADO ⚠️
 
 **Definido en:** Diseño §3.5
 
 | RPC | Estado |
 |---|---|
-| `GetTweetsByIds` (Feed → Tweet) | ✅ Implementado (`feed-service/src/grpc/tweet.client.ts`) |
+| `GetTweetsByIds` (Feed → Tweet) | ✅ Implementado |
 | `GetUserNotificationPrefs` (Notification → User) | ❌ Fase 2 |
 | `ValidateMediaIds` (Media → Tweet) | ❌ Fase 2 (Media Service es stub) |
 
-Los dos RPCs faltantes dependen de Media Service (stub). Documentar como "Fase 2".
-
 ---
 
-## 6. REPOSITORIO xcloud-infrastructure — VACÍO ❌ PENDIENTE
+## 9. PENDIENTES FASE 2 (admisibles en presentación)
 
-**Ruta:** `C:\Users\Hp\Desktop\MAESTRIA\ESPECIALIDAD\JHESSER GUZMAN\xcloud-infrastructure\xcloud-infrastructure`
-
-Solo tiene el stack de ejemplo generado por `cdk init`. La infraestructura real (11 stacks CDK) está en `xcloud-api/infrastructure/`.
-
-**Opciones:**
-1. Copiar el contenido de `xcloud-api/infrastructure/` al repo separado
-2. Referenciar en presentación que la infraestructura está co-located en el monorepo
-
----
-
-## TABLA DE PRIORIDADES ACTUALIZADA
-
-| # | Gap | Estado | Impacto en presentación | Esfuerzo |
-|---|---|---|---|---|
-| 1 | **Repo xcloud-infrastructure vacío** | ❌ Pendiente | Alto | Bajo (copiar archivos) |
-| 2 | **bcrypt → Argon2id** | ❌ Pendiente | Alto — el diseño lo prohíbe | Bajo (30 min) |
-| 3 | **Response de /register sin token** | ❌ Pendiente | Medio | Bajo (15 min) |
-| 4 | **Rate limiting en /login (429)** | ❌ Pendiente | Medio | Bajo (30 min) |
-| 5 | **Validación de handle en registro** | ❌ Pendiente | Medio | Bajo (20 min) |
-| 6 | **WebSocket server no iniciado** | ❌ Pendiente | Medio | Medio (2 horas) |
-| 7 | **is_deleted en Cassandra** | ❌ Pendiente | Bajo | Bajo (5 min CQL) |
-| 8 | **GET /search?type=users (Elasticsearch)** | ⚠️ Fase 2 | Bajo | Alto |
-| 9 | **DELETE /v1/users/me (GDPR)** | ⚠️ Fase 2 | Bajo | Medio |
-| 10 | **TTL en Cassandra** | ⚠️ Solo producción | Bajo | Bajo |
-| 11 | **gRPC GetUserNotificationPrefs / ValidateMediaIds** | ⚠️ Fase 2 | Bajo | Alto |
+| # | Gap | Justificación |
+|---|---|---|
+| 1 | **GET /search?type=users vía OpenSearch** | Búsqueda de usuarios ya funciona vía PostgreSQL LIKE; OpenSearch es optimización de escala |
+| 2 | **DELETE /v1/users/me (GDPR)** | Compliance GDPR — fuera del alcance del MVP académico |
+| 3 | **Campo `is_deleted` en Cassandra** | Depende de `DELETE /v1/users/me` |
+| 4 | **TTL en Cassandra (7 años / 2 años)** | Solo aplica en producción con AWS Keyspaces |
+| 5 | **COUNTER vs INT en Cassandra** | Decisión técnica documentada: incompatibilidad con columnas regulares en la misma tabla |
+| 6 | **gRPC GetUserNotificationPrefs / ValidateMediaIds** | Bloqueados por Media Service stub |
 
 ---
 
 ## LO QUE SÍ ESTÁ BIEN ✅
 
-- **8 microservicios** corriendo en sus puertos correctos (3000–3007)
-- **Mensajería híbrida** Kafka local / SQS+SNS producción implementada en `@xcloud/shared`
-- **3 topics** (`tweet.created`, `tweet.liked`, `user.followed`) con productores y consumidores correctos
-- **Fan-out on write** implementado en fanout-service (Redis feed cache por userId)
+- **8 microservicios** corriendo en puertos 3000–3007
+- **Mensajería híbrida** Kafka local / SQS+SNS producción (`@xcloud/shared`)
+- **5 eventos** publicados y consumidos: tweet.created, tweet.liked, tweet.replied, tweet.retweeted, user.followed
+- **Fan-out on write** en fanout-service (Redis feed cache por userId)
 - **Feed con cursor pagination** y cache Redis + fallback Cassandra
-- **gRPC GetTweetsByIds** entre feed-service y tweet-service funcionando
-- **11 stacks CDK** cubriendo toda la infraestructura AWS del diseño
-- **Ambientes** beta / gamma / prod definidos en CDK
-- **MonitoringStack** con alarmas CloudWatch alineadas al diseño §6.3
-- **Cognito** configurado en AuthStack (User Pool + grupos admin/moderator/user)
-- **Modelo de datos PostgreSQL** (users, follows, notifications) coincide con el diseño §6.1
-- **Modelo de datos Cassandra** (tweets, tweets_by_author, likes, likes_by_user, retweets, retweets_by_user) con partition key correcto
-- **Retweet/unretweet** funcional con estado persistido en Cassandra ✅ (2026-06-13)
-- **Búsqueda de usuarios** en tiempo real con dropdown flotante en sidebar y página Search ✅ (2026-06-14)
-- **Following/Followers** con estados reales desde backend, navegación desde perfil ✅ (2026-06-14)
-- **Follow status** cargado al abrir cualquier perfil ✅ (2026-06-14)
-- **Frontend React** completo: home, login, register, profile, search (con dropdown + Enter), notifications, bookmarks, connections (following/followers)
-- **Vite proxy** configurado correctamente para rutear `/api/v1/<servicio>/*` a cada puerto
-- **Smithy SSDK** pilot en user-service con 4 operaciones modeladas (GetUser, UpdateUser, Follow, Unfollow)
+- **gRPC GetTweetsByIds** entre feed-service y tweet-service
+- **WebSocket** en tiempo real: like, follow y retweet con reconexión automática
+- **11 stacks CDK** en dos repos (monorepo + repo separado)
+- **Ambientes** beta / gamma / prod en CDK (~$136/mes beta)
+- **Cognito** User Pool + grupos admin/moderator/user
+- **Smithy SSDK** pilot en user-service (GetUser, UpdateUser, Follow, Unfollow)
+- **Seguridad**: Argon2id, rate limiting 429, validación handle, register devuelve JWT
+- **OpenSearch** (migrado desde Elasticsearch) alineado con AWS OpenSearch Service
+- **Frontend React** completo: home, perfil, search con dropdown, notificaciones en vivo, bookmarks, following/followers con estados reales
+- **Repo xcloud-infrastructure** sincronizado con los 11 stacks
 
 ---
 
-*Última actualización: 2026-06-14. Verificar con `git log` para cambios posteriores.*
+*Última actualización: 2026-06-14 post-pull. Todos los gaps críticos resueltos.*

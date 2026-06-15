@@ -38,19 +38,6 @@ function handler(event) {
       connectionTimeout:   cdk.Duration.seconds(5),
     });
 
-    // API cache policy — never cache, always forward to ALB
-    const apiCachePolicy = new cloudfront.CachePolicy(this, 'ApiCachePolicy', {
-      cachePolicyName:       `xcloud-api-nocache-${props.envConfig.name}`,
-      defaultTtl:            cdk.Duration.seconds(0),
-      minTtl:                cdk.Duration.seconds(0),
-      maxTtl:                cdk.Duration.seconds(0),
-      headerBehavior:        cloudfront.CacheHeaderBehavior.allowList(
-        'Authorization', 'Content-Type', 'Accept',
-      ),
-      queryStringBehavior:   cloudfront.CacheQueryStringBehavior.all(),
-      cookieBehavior:        cloudfront.CacheCookieBehavior.none(),
-    });
-
     this.distribution = new cloudfront.Distribution(this, 'Distribution', {
       // Default behavior — React SPA from S3 web bucket
       defaultBehavior: {
@@ -61,10 +48,11 @@ function handler(event) {
       },
       additionalBehaviors: {
         // All API calls routed to the ALB, never cached
+        // Use AWS managed CachingDisabled policy (TTL=0, no header restrictions)
         '/api/*': {
           origin:               apiOrigin,
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.ALLOW_ALL,
-          cachePolicy:          apiCachePolicy,
+          cachePolicy:          cloudfront.CachePolicy.CACHING_DISABLED,
           allowedMethods:       cloudfront.AllowedMethods.ALLOW_ALL,
           originRequestPolicy:  cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
           functionAssociations: [{

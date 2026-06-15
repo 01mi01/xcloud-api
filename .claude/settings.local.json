@@ -6,7 +6,12 @@
       "PowerShell(Get-Content \"$env:TEMP\\\\tweet-service.log\")",
       "PowerShell(docker exec xcloud-cassandra cqlsh -e \"DESCRIBE KEYSPACES\" 2>&1)",
       "Bash(ls \"c:/Users/Hp/Desktop/MAESTRIA/ESPECIALIDAD/JHESSER GUZMAN/xcloud-infrastructure/xcloud-infrastructure/lib/stacks/\")",
-      "Read(//c/Users/Hp/Desktop/MAESTRIA/ESPECIALIDAD/JHESSER GUZMAN/xcloud-infrastructure/xcloud-infrastructure/lib/stacks/**)"
+      "Read(//c/Users/Hp/Desktop/MAESTRIA/ESPECIALIDAD/JHESSER GUZMAN/xcloud-infrastructure/xcloud-infrastructure/lib/stacks/**)",
+      "PowerShell(aws ecr get-login-password --region us-east-2)",
+      "PowerShell(docker login --username AWS --password-stdin 090522149674.dkr.ecr.us-east-2.amazonaws.com)",
+      "Bash(docker build *)",
+      "Bash(docker tag *)",
+      "Bash(docker push *)"
     ]
   }
 }
