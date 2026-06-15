@@ -41,13 +41,13 @@ const buildClient = (): Client => {
     }
 
     return new Client({
-        node: process.env.ELASTICSEARCH_URL || "http://localhost:9200",
+        node: process.env.OPENSEARCH_URL || process.env.ELASTICSEARCH_URL || "http://localhost:9200",
     });
 };
 
-const esClient = buildClient();
+const osClient = buildClient();
 
 export const TWEET_INDEX = "tweets";
 export const USER_INDEX  = "users";
 
-export default esClient;
+export default osClient;

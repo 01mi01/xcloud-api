@@ -1,6 +1,17 @@
 # X(dot)com - Diseño Técnico
 
-### Estado del documento: En revisión  ·  *(implementación: beta desplegado en AWS — ver «[Estado de implementación](#estado-de-implementación-beta--junio-2026)» más abajo)*
+**ESTADO DEL DOCUMENTO:** REVISADO  ·  *(implementación: beta desplegado en AWS — ver «[Estado de implementación](#estado-de-implementación-beta--junio-2026)» más abajo)*
+
+| Campo | Detalle |
+|---|---|
+| **Sistema** | X(dot)com — Clon de Twitter/X (Red Social) |
+| **Equipo** | De los Rios Aliaga Mijaelha · Flores Velasquez Maritza Karen · Machaca Lamas Sergio Alejandro · Mamani Poma Alexander Manuel |
+| **Curso** | Arquitectura en la Nube y Microservicios — Maestría Full Stack Development, UCB 2026 |
+| **Docente** | PhD. Jhesser Guzmán |
+| **Fecha de Entrega** | 14 de junio de 2026 |
+| **Repositorios** | `xcloud-api` (monorepo) · `xcloud-infrastructure` (CDK stacks) |
+
+---
 
 ## Resumen
 
@@ -466,7 +477,7 @@ end
 
 ## 5. Diseño de alto nivel
 
-### 5.3 Componentes
+### 5.1 Componentes
 
 El sistema se compone de los siguientes servicios cloud-native, todos desplegados como contenedores Docker sobre Amazon ECS con Fargate (ver ADR-002) en infraestructura nueva aprovisionada en el proveedor cloud AWS.
 
@@ -554,7 +565,7 @@ flowchart TD
 
 **WebSocket Server** — Mantiene conexiones persistentes con clientes activos. Recibe push del Notification Service y los despacha al cliente correspondiente.
 
-### 5.2 Modelo de datos por componente
+### 5.2 Modelo de Datos por Componente
 
 ```bash
 UserDB (PostgreSQL)
@@ -582,7 +593,7 @@ notifications:  id, recipient_user_id, actor_user_id, type (like/retweet/follow/
                 ref_tweet_id, read, created_at
 ```
 
-### 5.3 Temporización - Flujo crítico: Lectura del Feed (p99 target < 200ms)
+### 5.3 Temporización — Flujo Crítico: Lectura del Feed (p99 target < 200ms)
 
 ```mermaid
 timeline
@@ -606,7 +617,7 @@ timeline
 - En cache miss (reconstrucción desde Cassandra), la latencia sube a ~350ms — mitigado manteniendo el cache con TTL de 24h y re-calentamiento proactivo en Fan-out Service.
 - La hidratación via gRPC en batch es el paso más costoso (~50ms). Se optimiza en la sección de Inmersiones Profundas con un tweet cache secundario en Redis.
 
-## 5.4 Decisiones de Diseño — Trade-offs
+### 5.4 Decisiones de Diseño — Trade-offs
 
 | Decisión | Alternativa considerada | Decisión tomada | Pros | Contras |
 | --- | --- | --- | --- | --- |
@@ -778,17 +789,7 @@ Toda la observabilidad centralizada en **Amazon CloudWatch** + **AWS X-Ray** par
 
 **Revisión de Seguridad:** Requerida antes del lanzamiento a producción. Se levantará un ticket de Application Security Review con el equipo de seguridad en la fase de diseño detallado.
 
-**Vectores de entrada y mitigaciones:**
-
-- **API pública REST:** Todos los endpoints pasan por AWS WAF con reglas para SQLi, XSS y rate limiting por IP. Inputs validados y sanitizados en cada servicio (sin caracteres `;`, `<`, `>` sin escapar, longitudes máximas aplicadas en capa de API y de servicio).
-- **Autenticación:** JWT firmados con RS256 (clave privada en AWS Secrets Manager, rotación automática cada 90 días). Tokens con expiración de 15 minutos + refresh token en HttpOnly cookie.
-- **Almacenamiento de credenciales:** Passwords hasheados con **Argon2id** (nunca bcrypt en nuevas implementaciones). Salted por usuario.
-- **Cifrado en tránsito:** TLS 1.3 obligatorio en todos los endpoints externos. gRPC inter-servicio sobre TLS dentro de la VPC (security groups + AWS Certificate Manager). El service mesh (Istio/Linkerd) no aplica en ECS; la observabilidad inter-servicio usa CloudWatch Container Insights (ver ADR-002).
-- **Cifrado en reposo:** S3 con SSE-KMS, RDS con cifrado habilitado en volumen EBS, ElastiCache con at-rest encryption, Keyspaces cifrado nativo.
-- **Secrets Management:** Toda credencial almacenada en AWS Secrets Manager. Ningún secreto en variables de entorno planas ni en código fuente.
-- **IAM mínimo privilegio:** Cada microservicio con su propio IAM Role (ECS Task Role), con permisos exclusivos a los recursos que necesita.
-- **Pruebas de penetración:** Programadas trimestralmente a partir del lanzamiento de Fase 1. Scope: API pública, autenticación, upload de media.
-- **GDPR/CCPA:** Endpoint `DELETE /v1/users/me` implementa borrado completo (hard delete en UserDB, soft delete en TweetDB marcado para purga batch a 30 días). Logs de acceso a datos de usuario retenidos con audit trail en CloudTrail.
+Esta sección cubre cuatro pilares: modelo de autorización (§6.4.1), integración SSO con Amazon Cognito (§6.4.2), flujo de autenticación OIDC (§6.4.3) y vectores de ataque con mitigaciones (§6.4.4).
 
 ---
 
@@ -1196,7 +1197,7 @@ Stages:
 
 - Amazon Keyspaces tiene disponibilidad limitada. Se verificará disponibilidad en cada región objetivo antes de confirmar la selección. Alternativa: Cassandra self-managed en contenedores ECS/EC2 si Keyspaces no está disponible.
 
-### 6.9  Reteción de datos
+### 6.9 Retención de Datos
 
 | Almacén | Dato | Retención | Estrategia |
 | --- | --- | --- | --- |
@@ -1301,38 +1302,42 @@ a revisión docente.
 
 ### Apéndice A - Actas de Revisión
 
-**Revisión 1 (__ / __ / ____):**
+**Revisión 1 (14/06/2026) — Revisión interna de equipo:**
 
 **Asistentes:**
 
-- Equipo de desarrollo (4 integrantes)
-- Docente / Revisor
+- De los Rios Aliaga Mijaelha
+- Flores Velasquez Maritza Karen
+- Machaca Lamas Sergio Alejandro
+- Mamani Poma Alexander Manuel
 
 **Comentarios:**
 
-- 
-- 
+- Se ajustó el modelo AuthN de Implicit Flow a Authorization Code + PKCE por las recomendaciones de seguridad de OAuth 2.0 BCP.
+- Se decidió usar Amazon SQS en lugar de Apache Kafka/MSK para el ambiente de producción (ver ADR-001), manteniendo Kafka solo para desarrollo local.
+- Se confirmó ECS Fargate sobre EKS para evitar la gestión de nodos y reducir costos operacionales (ver ADR-002).
+- Se migró de Elasticsearch a OpenSearch para alineación con el stack AWS oficial.
 
 **Acciones:**
 
-- `__________________@`: _______________________________________________
-- `__________________@`: _______________________________________________
+- `machaca@`: Documentar decisión SQS vs Kafka en ADR-001 con análisis costo/throughput.
+- `delosrios@`: Completar diagramas de flujo AuthN con escenario de refresh token.
 
 ---
 
-**Revisión 2 (__ / __ / ____):**
+**Revisión 2 (14/06/2026) — Revisión con implementación:**
 
 **Asistentes:**
 
 - Equipo de desarrollo (4 integrantes)
-- Docente / Revisor
 
 **Comentarios:**
 
-- 
-- 
+- Implementación completa de los 8 microservicios verificada contra el diseño. Sin desviaciones críticas.
+- WebSocket para notificaciones en tiempo real implementado y funcionando (like, follow, retweet).
+- Smithy SSDK integrado en user-service para las operaciones GetUser, UpdateUser, Follow, Unfollow.
+- Seguridad: Argon2id implementado, rate limiting en login, validación de handle con regex.
 
 **Acciones:**
 
-- `__________________@`: _______________________________________________
-- `__________________@`: _______________________________________________
+- Pendiente Fase 2: `DELETE /v1/users/me` (GDPR), gRPC `GetUserNotificationPrefs`, TTL en Keyspaces.

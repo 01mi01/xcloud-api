@@ -25,8 +25,10 @@ describe("registerUser", () => {
         mockQuery.mockResolvedValueOnce({ rows: [] }); // no existing email
         (mockBcrypt.hash as jest.Mock).mockResolvedValue("hashed");
 
-        const userId = await svc.registerUser("alice", "alice@example.com", "secret");
-        expect(typeof userId).toBe("string");
+        const result = await svc.registerUser("alice", "alice@example.com", "secret");
+        // registerUser now returns { userId, token } (register issues a JWT).
+        expect(typeof result.userId).toBe("string");
+        expect(typeof result.token).toBe("string");
 
         const client = await (mockPool as unknown as { connect(): Promise<{ query: jest.Mock }> }).connect();
         const statements = client.query.mock.calls.map((c) => String(c[0]));

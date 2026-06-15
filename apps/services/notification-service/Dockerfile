@@ -24,5 +24,7 @@ COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
 COPY --from=builder /app/apps/services/notification-service/dist ./apps/services/notification-service/dist
 COPY --from=builder /app/apps/services/notification-service/package.json ./apps/services/notification-service/package.json
+# Copy local node_modules if workspace hoisting left packages here
+COPY --from=builder /app/apps/services/notification-service/node_modules ./apps/services/notification-service/node_modules
 EXPOSE 3004
 CMD ["node", "apps/services/notification-service/dist/index.js"]

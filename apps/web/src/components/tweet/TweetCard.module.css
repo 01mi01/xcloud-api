@@ -54,6 +54,17 @@
   color: var(--color-text-secondary);
 }
 
+/* Replying to label */
+.replyingTo {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.replyHandle {
+  color: var(--color-accent);
+}
+
 /* Tweet text */
 .text {
   font-size: var(--font-size-md);
@@ -117,4 +128,184 @@
 .bookmarkBtn:hover {
   color: var(--color-accent);
   background-color: rgba(29, 155, 240, 0.1);
+}
+
+.bookmarked {
+  color: var(--color-accent);
+}
+
+/* Menú tres puntos */
+.menuWrapper {
+  position: relative;
+  margin-left: auto;
+}
+
+.menuTrigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.menuTrigger:hover {
+  background-color: rgba(29, 155, 240, 0.1);
+  color: var(--color-accent);
+}
+
+.menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 50;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  min-width: 160px;
+  overflow: hidden;
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 12px 16px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  text-align: left;
+  transition: background-color 0.15s;
+}
+
+.menuItem:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.menuItemDanger {
+  color: var(--color-danger);
+}
+
+/* Edición inline */
+.editBox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.editTextarea {
+  width: 100%;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+  line-height: 1.5;
+  padding: 8px 10px;
+  resize: none;
+  outline: none;
+}
+
+.editActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.editCancel {
+  padding: 5px 14px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  transition: background-color 0.2s;
+}
+
+.editCancel:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.editSave {
+  padding: 5px 14px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  background-color: var(--color-accent);
+  color: #fff;
+  transition: opacity 0.2s;
+}
+
+.editSave:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Modal de confirmación de eliminación */
+.confirmBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirmModal {
+  background-color: var(--color-bg-primary);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 320px;
+  padding: 32px 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.confirmTitle {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+}
+
+.confirmMsg {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.confirmDeleteBtn {
+  width: 100%;
+  padding: 12px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  background-color: var(--color-danger);
+  color: #fff;
+  transition: opacity 0.2s;
+}
+
+.confirmDeleteBtn:hover {
+  opacity: 0.9;
+}
+
+.confirmCancelBtn {
+  width: 100%;
+  padding: 12px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  transition: background-color 0.2s;
+}
+
+.confirmCancelBtn:hover {
+  background-color: var(--color-bg-hover);
 }

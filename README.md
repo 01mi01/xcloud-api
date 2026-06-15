@@ -1,6 +1,6 @@
 # X(dot)com — Twitter Clone Platform
 
-Plataforma de red social en la nube inspirada en la arquitectura de X/Twitter. Implementada como un sistema de microservicios con comunicación asíncrona via Kafka, caché en Redis y búsqueda full-text con Elasticsearch.
+Plataforma de red social en la nube inspirada en la arquitectura de X/Twitter. Implementada como un sistema de microservicios con comunicación asíncrona via Kafka, caché en Redis y búsqueda full-text con OpenSearch.
 
 ## Materia
 Arquitectura en la Nube y Microservicios - Maestría Full Stack Development - UCB 2026
@@ -25,24 +25,24 @@ El sistema está compuesto por **8 microservicios** independientes, cada uno con
 | Servicio | Puerto | Descripción | Base de datos |
 |---|---|---|---|
 | Auth Service | 3000 | Registro (valida handle), login, JWT | PostgreSQL (`auth_users`) |
-| User Service | 3001 | Perfiles, follow/unfollow | PostgreSQL (`users`, `follows`) |
+| User Service | 3001 | Perfiles, follow/unfollow, búsqueda | PostgreSQL (`users`, `follows`) |
 | Tweet Service | 3002 | CRUD tweets, likes, retweets, replies, estado por usuario | Cassandra (`tweets`, `likes`, `retweets`, `replies_by_tweet`) |
-| Feed Service | 3003 | Timeline personalizado | Redis (cache) + Cassandra (fallback) |
-| Fan-out Service | — | Distribuye tweets/retweets a feeds | Redis (escritura) + PostgreSQL (lectura) |
+| Feed Service | 3003 | Timeline personalizado con cursor pagination | Redis (cache) + Cassandra (fallback) |
+| Fan-out Service | worker + /health 3007 | Distribuye tweets/retweets al feed de seguidores | Redis (escritura) + PostgreSQL (lectura) |
 | Notification Service | 3004 | Notificaciones (likes/retweets/follows) + push **WebSocket** | PostgreSQL (`notifications`) |
-| Search Service | 3005 | Búsqueda full-text de tweets **y usuarios** | Elasticsearch (`tweets`, `users`) |
+| Search Service | 3005 | Búsqueda full-text de tweets **y usuarios** | OpenSearch (`tweets`, `users`) |
 | Media Service | 3006 | Subida de imágenes (disco local / S3) | disco local (dev) / S3 (prod) |
 
 ### Comunicación entre servicios
 
 - **REST** para APIs públicas (cliente → servicio)
 - **WebSocket** para notificaciones en tiempo real (notification-service → SPA)
-- **Kafka** (local) / **SQS+SNS** (prod) para comunicación asíncrona entre servicios (eventos)
-- **HTTP interno** para hidratación de datos (Feed → Tweet Service)
+- **Kafka** (local) / **SQS+SNS** (producción) para eventos asíncronos — conmutación automática en `@xcloud/shared`
+- **HTTP interno** para hidratación de datos (Feed Service → Tweet Service)
 
-### Topics de Kafka
+### Topics de Kafka / Colas SQS
 
-| Topic | Productor | Consumidores |
+| Topic / Cola | Productor | Consumidores |
 |---|---|---|
 | `tweet.created` | Tweet Service | Fan-out Service, Search Service |
 | `tweet.liked` | Tweet Service | Notification Service |
@@ -86,7 +86,7 @@ JWT_SECRET=xcloud-local-dev-secret
 REDIS_HOST=localhost
 REDIS_PORT=6379
 KAFKA_BROKERS=localhost:9094
-ELASTICSEARCH_URL=http://localhost:9200
+OPENSEARCH_URL=http://localhost:9200
 CASSANDRA_CONTACT_POINTS=localhost
 CASSANDRA_KEYSPACE=xcloud
 ```
@@ -97,7 +97,7 @@ CASSANDRA_KEYSPACE=xcloud
 docker compose up -d
 ```
 
-Esto levanta: PostgreSQL, Cassandra, Redis, Kafka (KRaft) y Elasticsearch.
+Esto levanta: PostgreSQL, Cassandra, Redis, Kafka (KRaft) y OpenSearch.
 
 Esperar ~60 segundos a que todos los servicios estén healthy:
 
@@ -199,22 +199,24 @@ Stop-Service postgresql-x64-17
 |---|---|---|---|
 | GET | `/v1/users/:handle` | No | Obtener perfil por handle |
 | GET | `/v1/users/by-id/:userId` | No | Obtener perfil por userId (usado por hidratación de tweets) |
-| GET | `/v1/users/:userId/following` | No | Listar a quién sigue el usuario |
-| GET | `/v1/users/:userId/followers` | No | Listar quién sigue al usuario |
+| GET | `/v1/users/search?q=...` | No | Buscar usuarios por handle o nombre |
 | POST | `/v1/users/following-status` | Bearer | ¿Cuáles de un lote de userIds sigue el viewer? (botones follow) |
 | PUT | `/v1/users/me` | Bearer | Actualizar perfil propio |
 | POST | `/v1/users/:userId/follow` | Bearer | Seguir a un usuario |
 | DELETE | `/v1/users/:userId/follow` | Bearer | Dejar de seguir |
+| GET | `/v1/users/:userId/follow` | Bearer | Estado de follow (¿ya lo sigo?) |
+| GET | `/v1/users/:userId/following` | No | Lista de usuarios que sigue |
+| GET | `/v1/users/:userId/followers` | No | Lista de seguidores |
 
-> Nota: al registrarse via Auth Service se crea automáticamente la fila correspondiente en la tabla `users` (transacción atómica con `auth_users`), por lo que el perfil queda disponible inmediatamente sin necesidad de un `PUT /v1/users/me` previo.
+> Al registrarse via Auth Service se crea automáticamente la fila en `users` (transacción atómica con `auth_users`).
 
-> Nota: salvo `/by-id/:userId`, estas rutas se sirven con los **handlers Smithy SSDK generados** desde el modelo (ver [SDK de servidor generado](#sdk-de-servidor-generado-xcloudsdk-server)) — el ruteo, la validación y la serialización salen del contrato.
+> Las rutas `/:handle`, `PUT /me`, `POST/DELETE /:userId/follow` se sirven con los **handlers Smithy SSDK generados** — ruteo, validación y serialización salen del contrato (ver [SDK de servidor generado](#sdk-de-servidor-generado-xcloudsdk-server)).
 
 ### Tweet Service (puerto 3002)
 
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
-| POST | `/v1/tweets` | Bearer | Publicar tweet |
+| POST | `/v1/tweets` | Bearer | Publicar tweet o reply |
 | GET | `/v1/tweets/author/:authorId` | No | Listar tweets de un usuario (perfil) |
 | GET | `/v1/tweets/liked/:userId` | No | Listar tweets que un usuario dio like (pestaña Likes) |
 | GET | `/v1/tweets/:tweetId/replies` | No | Listar respuestas de un tweet |
@@ -222,8 +224,10 @@ Stop-Service postgresql-x64-17
 | DELETE | `/v1/tweets/:tweetId` | Bearer | Eliminar tweet propio |
 | POST | `/v1/tweets/:tweetId/like` | Bearer | Dar like |
 | DELETE | `/v1/tweets/:tweetId/like` | Bearer | Quitar like |
+| GET | `/v1/tweets/:tweetId/like` | Bearer | Estado de like |
 | POST | `/v1/tweets/:tweetId/retweet` | Bearer | Retuitear |
 | DELETE | `/v1/tweets/:tweetId/retweet` | Bearer | Quitar retweet |
+| GET | `/v1/tweets/:tweetId/retweet` | Bearer | Estado de retweet |
 | POST | `/v1/tweets/interactions` | Bearer | Estado like/retweet del usuario para un lote de tweetIds |
 
 ### Feed Service (puerto 3003)
@@ -355,7 +359,7 @@ Notas:
 | xcloud-cassandra | cassandra:4.1 | 9042 | Amazon Keyspaces |
 | xcloud-redis | redis:7-alpine | 6379 | Amazon ElastiCache |
 | xcloud-kafka | apache/kafka:3.7.0 | 9092 | Amazon MSK |
-| xcloud-elasticsearch | elasticsearch:8.13.0 | 9200 | Amazon OpenSearch |
+| xcloud-opensearch | opensearchproject/opensearch:2.13.0 | 9200 | Amazon OpenSearch |
 
 ## Smithy API Model
 
@@ -406,7 +410,28 @@ Así, frontend y backend comparten **un solo contrato** definido en
 
 ## Infraestructura AWS (CDK)
 
-La carpeta `infrastructure/` contiene el IaC (AWS CDK) para desplegar en ECS Fargate. Para sintetizar las plantillas de **beta** (sin desplegar):
+La infraestructura como código está en dos repositorios:
+
+- **`xcloud-api/infrastructure/`** — co-located en el monorepo (fuente de verdad durante desarrollo)
+- **`xcloud-infrastructure/`** — repositorio separado de IaC (reflejo sincronizado, para revisión independiente por el equipo de cloud)
+
+Contiene **11 stacks CDK** para desplegar en ECS Fargate:
+
+| Stack | Responsabilidad |
+|---|---|
+| `NetworkingStack` | VPC, subnets, NAT Gateway |
+| `DatabaseStack` | RDS PostgreSQL, Keyspaces |
+| `CacheStack` | ElastiCache Redis |
+| `MessagingStack` | SQS + SNS (fan-out tweet.created → 2 colas) |
+| `SearchStack` | OpenSearch (beta: deshabilitado) |
+| `StorageStack` | S3 bucket para media |
+| `AuthStack` | Cognito User Pool + grupos |
+| `EcsStack` | ECS Fargate — 8 servicios + ALB |
+| `GatewayStack` | API Gateway (producción) |
+| `CdnStack` | CloudFront + S3 SPA |
+| `MonitoringStack` | CloudWatch alarmas + dashboards |
+
+Para sintetizar las plantillas de **beta** (sin desplegar):
 
 ```bash
 cd infrastructure
@@ -487,12 +512,16 @@ xcloud-api/
 ├── db/                           # init.sql (PostgreSQL) + cassandra-init.cql
 ├── api-model/                    # Smithy CLI (genera OpenAPI)
 ├── apps/
-│   ├── web/                      # Frontend React (Vite)
+│   ├── web/                      # Frontend React 19 + Vite (SPA)
 │   └── services/
-│       ├── auth-service/         # 3000   user-service/ 3001   tweet-service/ 3002
-│       ├── feed-service/         # 3003   notification-service/ 3004   search-service/ 3005
-│       ├── media-service/        # 3006 (subida de imágenes: disco local / S3)
-│       └── fanout-service/       # worker + /health 3007
+│       ├── auth-service/         # :3000 — registro, login, JWT
+│       ├── user-service/         # :3001 — perfiles, follow, búsqueda (SSDK piloto)
+│       ├── tweet-service/        # :3002 — tweets, likes, retweets, replies
+│       ├── feed-service/         # :3003 — timeline, cursor pagination
+│       ├── notification-service/ # :3004 — notificaciones, WebSocket publisher
+│       ├── search-service/       # :3005 — full-text OpenSearch
+│       ├── media-service/        # :3006 — subida de imágenes (disco local / S3)
+│       └── fanout-service/       # worker + /health :3007 — fan-out on write
 ├── packages/
 │   ├── shared/                   # @xcloud/shared (auth, mensajería Kafka/SQS, utils)
 │   ├── sdk-client/               # Cliente TS generado desde Smithy (usado por apps/web)

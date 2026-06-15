@@ -3,6 +3,8 @@ export type EventName =
   | 'tweet.created'
   | 'tweet.liked'
   | 'tweet.retweeted'
+  | 'tweet.replied'
+  | 'tweet.mentioned'
   | 'user.followed'
   | 'user.created'
   | 'user.updated';

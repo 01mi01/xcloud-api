@@ -16,6 +16,7 @@ function Home() {
   const { identity, profile } = useAuth();
   const [tweets, setTweets] = useState<Tweet[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("foryou");
 
@@ -64,6 +65,8 @@ function Home() {
         replyToTweetId: raw.replyToTweetId ?? null,
         liked: false,
         retweeted: false,
+        bookmarked: false,
+        replyToAuthorHandle: null,
       };
       setTweets((prev) => [optimistic, ...prev]);
     },
@@ -75,6 +78,9 @@ function Home() {
       <LeftSidebar />
 
       <main className={styles.feed}>
+        {/* Progress bar al recargar el feed */}
+        <div className={`${styles.progressBar} ${refreshing ? styles.progressBarActive : ""}`} />
+
         {/* Sticky header with tabs */}
         <div className={styles.feedHeader}>
           <button
@@ -105,7 +111,18 @@ function Home() {
             {!loading &&
               !error &&
               tweets.map((tweet) => (
-                <TweetCard key={tweet.tweetId} tweet={tweet} />
+                <TweetCard
+                  key={tweet.tweetId}
+                  tweet={tweet}
+                  onDeleted={(id) => setTweets((prev) => prev.filter((t) => t.tweetId !== id))}
+                  onReplyCreated={(_parentId) => {
+                    setRefreshing(true);
+                    feedApi.getFeed().then(async (res) => {
+                      const hydrated = await hydrateTweets(res.tweets, identity?.userId);
+                      setTweets(hydrated);
+                    }).catch(() => {}).finally(() => setRefreshing(false));
+                  }}
+                />
               ))}
           </>
         )}

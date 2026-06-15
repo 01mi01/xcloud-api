@@ -25,8 +25,8 @@ export interface RawTweet {
   retweetCount: number;
   createdAt: string;
   replyToTweetId: string | null;
-  // Optional — the tweet-service `getTweet` returns this; feed does not yet.
   repliesCount?: number;
+  replyToAuthorHandle?: string | null;
 }
 
 /**
@@ -45,6 +45,8 @@ export interface Tweet {
   replyToTweetId: string | null;
   liked: boolean;
   retweeted: boolean;
+  bookmarked?: boolean;
+  replyToAuthorHandle?: string | null;
 }
 
 /**

@@ -4,6 +4,7 @@ import { JwtPayload } from "jsonwebtoken";
 // Si el modelo cambia (p.ej. renombra un campo del request), esto rompe en compile-time.
 import type { CreateTweetServerInput } from "@xcloud/sdk-server";
 import * as svc from "../services/tweet.service";
+import * as repo from "../repositories/tweet.repository";
 
 type AuthRequest = Request & { user: JwtPayload & { sub: string } };
 
@@ -117,6 +118,7 @@ export const retweetTweet = async (req: Request, res: Response): Promise<void> =
     } catch (err) {
         if ((err as Error).name === "TweetNotFoundError")    { res.status(404).json({ message: (err as Error).message }); return; }
         if ((err as Error).name === "AlreadyRetweetedError") { res.status(409).json({ message: (err as Error).message }); return; }
+        console.error("[tweet-service] retweetTweet failed:", err);
         res.status(500).json({ message: "Internal server error" });
     }
 };
@@ -128,6 +130,30 @@ export const unretweetTweet = async (req: Request, res: Response): Promise<void>
     } catch (err) {
         if ((err as Error).name === "TweetNotFoundError") { res.status(404).json({ message: (err as Error).message }); return; }
         if ((err as Error).name === "NotRetweetedError")  { res.status(404).json({ message: (err as Error).message }); return; }
+        console.error("[tweet-service] unretweetTweet failed:", err);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+export const getRetweetStatus = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const retweeted = await repo.retweetExists((req as AuthRequest).user.sub, req.params.tweetId as string);
+        res.status(200).json({ retweeted });
+    } catch (err) {
+        console.error("[tweet-service] getRetweetStatus failed:", err);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+export const getLikeStatus = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const liked = await repo.likeExists(
+            (req as AuthRequest).user.sub,
+            req.params.tweetId as string
+        );
+        res.status(200).json({ liked });
+    } catch (err) {
+        console.error("[tweet-service] getLikeStatus failed:", err);
         res.status(500).json({ message: "Internal server error" });
     }
 };

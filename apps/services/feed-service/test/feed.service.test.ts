@@ -20,6 +20,7 @@ const mockTweet: HydratedTweet = {
     replyToTweetId: null,
     likesCount:     5,
     retweetCount:   1,
+    repliesCount:   0,
     createdAt:      new Date().toISOString(),
 };
 

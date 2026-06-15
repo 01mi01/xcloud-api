@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useRef, useState } from "react";
 import type { User } from "../../types";
 import * as usersApi from "../../api/users";
 import { uploadImage } from "../../api/media";
@@ -15,17 +15,23 @@ interface Props {
 function EditProfileModal({ user, onClose, onSave }: Props) {
   const [displayName, setDisplayName] = useState(user.displayName);
   const [bio, setBio] = useState(user.bio ?? "");
-  const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl ?? "");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+
+  // Avatar persists via media-service upload; banner is preview-only for now.
+  const [avatarUrl, setAvatarUrl] = useState<string>(user.avatarUrl ?? "");
+  const [bannerPreview, setBannerPreview] = useState<string>("");
+  const [bannerFile, setBannerFile] = useState<File | null>(null);
+
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
 
   const nameOver = displayName.length > 50;
   const bioOver = bio.length > 160;
   const invalid = nameOver || bioOver || displayName.trim().length === 0;
 
-  const handleAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
@@ -43,15 +49,26 @@ function EditProfileModal({ user, onClose, onSave }: Props) {
     }
   };
 
+  const handleBannerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBannerFile(file);
+    setBannerPreview(URL.createObjectURL(file));
+  };
+
   const handleSave = async () => {
     if (invalid || saving || uploading) return;
     setSaving(true);
     setError(null);
     try {
+      // Banner preview is local-only for now (no persistence until media-service
+      // banner support lands on AWS).
+      void bannerFile;
+
       // Persist via PUT /v1/users/me (only send avatarUrl if set).
       const updated = await usersApi.updateMe({
         displayName,
-        bio,
+        bio: bio || undefined,
         ...(avatarUrl ? { avatarUrl } : {}),
       });
       onSave(updated);
@@ -63,7 +80,6 @@ function EditProfileModal({ user, onClose, onSave }: Props) {
     }
   };
 
-  // Close when clicking the backdrop
   const handleBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) onClose();
   };
@@ -72,7 +88,7 @@ function EditProfileModal({ user, onClose, onSave }: Props) {
     <div className={styles.backdrop} onClick={handleBackdrop}>
       <div className={styles.modal}>
 
-        {/* Modal header */}
+        {/* Header */}
         <div className={styles.header}>
           <button className={styles.closeBtn} onClick={onClose}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -81,31 +97,40 @@ function EditProfileModal({ user, onClose, onSave }: Props) {
             </svg>
           </button>
           <span className={styles.title}>Edit profile</span>
-          <button
-            className={styles.saveBtn}
-            onClick={handleSave}
-            disabled={invalid || saving}
-          >
+          <button className={styles.saveBtn} onClick={handleSave} disabled={invalid || saving || uploading}>
             {saving ? "Saving…" : "Save"}
           </button>
         </div>
 
-        {/* Banner placeholder */}
-        <div className={styles.banner}>
-          <button className={styles.mediaOverlay}>
+        {/* Banner */}
+        <div
+          className={styles.banner}
+          style={bannerPreview ? { backgroundImage: `url(${bannerPreview})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
+        >
+          <button className={styles.mediaOverlay} onClick={() => bannerInputRef.current?.click()} title="Cambiar portada">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={2}>
               <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
               <circle cx="12" cy="13" r="4" />
             </svg>
           </button>
+          <input
+            ref={bannerInputRef}
+            type="file"
+            accept="image/*"
+            className={styles.hiddenInput}
+            onChange={handleBannerChange}
+          />
         </div>
 
         {/* Avatar with camera overlay → uploads a new profile picture */}
         <div className={styles.avatarWrapper}>
-          <Avatar size={80} src={avatarUrl || undefined} />
+          {avatarUrl
+            ? <img src={avatarUrl} alt="avatar" className={styles.avatarImg} />
+            : <Avatar size={80} />
+          }
           <button
             className={styles.avatarOverlay}
-            onClick={() => fileRef.current?.click()}
+            onClick={() => avatarInputRef.current?.click()}
             disabled={uploading}
             title="Upload a profile picture"
           >
@@ -114,15 +139,20 @@ function EditProfileModal({ user, onClose, onSave }: Props) {
               <circle cx="12" cy="13" r="4" />
             </svg>
           </button>
-          <input ref={fileRef} type="file" accept="image/*" hidden onChange={handleAvatarFile} />
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/*"
+            className={styles.hiddenInput}
+            onChange={handleAvatarChange}
+          />
         </div>
         {uploading && <p style={{ textAlign: "center", color: "var(--color-text-secondary)", fontSize: 14, margin: "4px 0 0" }}>Uploading…</p>}
         {error && <p style={{ textAlign: "center", color: "#f4212e", fontSize: 14, margin: "4px 0 0" }}>{error}</p>}
 
-        {/* Form fields */}
+        {/* Formulario */}
         <div className={styles.form}>
 
-          {/* Display name */}
           <div className={`${styles.field} ${nameOver ? styles.fieldError : ""}`}>
             <label className={styles.label}>Name</label>
             <input
@@ -137,7 +167,6 @@ function EditProfileModal({ user, onClose, onSave }: Props) {
             </span>
           </div>
 
-          {/* Bio */}
           <div className={`${styles.field} ${bioOver ? styles.fieldError : ""}`}>
             <label className={styles.label}>Bio</label>
             <textarea
@@ -152,17 +181,7 @@ function EditProfileModal({ user, onClose, onSave }: Props) {
             </span>
           </div>
 
-          {/* Avatar URL */}
-          <div className={styles.field}>
-            <label className={styles.label}>Avatar URL</label>
-            <input
-              className={styles.input}
-              type="url"
-              placeholder="https://example.com/avatar.jpg"
-              value={avatarUrl}
-              onChange={(e) => setAvatarUrl(e.target.value)}
-            />
-          </div>
+          {error && <p className={styles.errorMsg}>{error}</p>}
 
         </div>
       </div>

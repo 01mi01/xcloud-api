@@ -9,6 +9,8 @@ import pool from "./config/db.config";
 import { startLikeConsumer } from "./consumers/like.consumer";
 import { startFollowConsumer } from "./consumers/follow.consumer";
 import { startRetweetConsumer } from "./consumers/retweet.consumer";
+import { startReplyConsumer } from "./consumers/reply.consumer";
+import { startMentionConsumer } from "./consumers/mention.consumer";
 import { attachWebSocketServer } from "./websocket/ws.server";
 
 const PORT = parseInt(process.env.NOTIFICATION_PORT ?? "3004");
@@ -30,7 +32,13 @@ const main = async (): Promise<void> => {
         try {
             // Start concurrently: in production each consumer long-polls its own
             // SQS queue (a blocking loop), so they must not be awaited sequentially.
-            await Promise.all([startLikeConsumer(), startFollowConsumer(), startRetweetConsumer()]);
+            // like + follow + retweet always start (retweet uses our SNS fan-out
+            // queue NOTIFY_RETWEET_QUEUE_URL); reply + mention only when their
+            // direct SQS queue URL is configured.
+            const consumers = [startLikeConsumer(), startFollowConsumer(), startRetweetConsumer()];
+            if (process.env.REPLY_EVENT_QUEUE_URL)   consumers.push(startReplyConsumer());
+            if (process.env.MENTION_EVENT_QUEUE_URL) consumers.push(startMentionConsumer());
+            await Promise.all(consumers);
             console.log("Notification Service — event consumers running");
         } catch (err) {
             if (attempt >= 5) {

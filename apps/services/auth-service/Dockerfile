@@ -22,5 +22,6 @@ COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
 COPY --from=builder /app/apps/services/auth-service/dist ./apps/services/auth-service/dist
 COPY --from=builder /app/apps/services/auth-service/package.json ./apps/services/auth-service/package.json
+COPY --from=builder /app/apps/services/auth-service/node_modules ./apps/services/auth-service/node_modules
 EXPOSE 3000
 CMD ["node", "apps/services/auth-service/dist/index.js"]

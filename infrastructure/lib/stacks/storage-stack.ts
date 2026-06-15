@@ -9,7 +9,7 @@ interface StorageStackProps extends cdk.StackProps {
 }
 
 export class StorageStack extends cdk.Stack {
-  public readonly bucket: s3.Bucket;
+  public readonly bucket:    s3.Bucket;
 
   constructor(scope: Construct, id: string, props: StorageStackProps) {
     super(scope, id, props);
@@ -43,7 +43,6 @@ export class StorageStack extends cdk.Stack {
       ],
       lifecycleRules: [
         {
-          // Expire incomplete multipart uploads after 7 days
           abortIncompleteMultipartUploadAfter: cdk.Duration.days(7),
         },
       ],

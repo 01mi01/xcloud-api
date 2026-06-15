@@ -23,6 +23,7 @@ function TweetComposer({ onTweetCreated }: Props) {
   const [showEmoji, setShowEmoji] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [focused, setFocused] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const remaining = MAX_CHARS - content.length;
   const isOverLimit = remaining < 0;
@@ -84,10 +85,12 @@ function TweetComposer({ onTweetCreated }: Props) {
       <div className={styles.right}>
 
         <textarea
-          className={styles.textarea}
+          className={`${styles.textarea} ${focused || content.length > 0 ? styles.textareaExpanded : ""}`}
           placeholder="What is happening?!"
           value={content}
           onChange={(e) => setContent(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => { if (!content && images.length === 0) setFocused(false); }}
           rows={3}
         />
 
@@ -114,43 +117,37 @@ function TweetComposer({ onTweetCreated }: Props) {
           </div>
         )}
 
+        <div className={`${styles.divider} ${focused || content.length > 0 || images.length > 0 ? styles.dividerActive : ""}`} />
+
         <div className={styles.footer}>
-
-          <div className={styles.tools}>
-
-            {/* Image upload */}
-            <button className={styles.toolBtn} onClick={() => fileRef.current?.click()}>
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={1.75}>
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <path d="M21 15l-5-5L5 21" />
-              </svg>
-            </button>
-            <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={handleImage} />
-
-            {/* Emoji toggle */}
-            <button className={styles.toolBtn} onClick={() => setShowEmoji((prev) => !prev)}>
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={1.75}>
-                <circle cx="12" cy="12" r="10" />
-                <path d="M8 13s1.5 2 4 2 4-2 4-2" />
-                <line x1="9" y1="9" x2="9.01" y2="9" strokeWidth={3} strokeLinecap="round" />
-                <line x1="15" y1="9" x2="15.01" y2="9" strokeWidth={3} strokeLinecap="round" />
-              </svg>
-            </button>
-
-          </div>
-
-          <div className={styles.right2}>
-            {remaining < 20 && (
-              <span className={`${styles.charCount} ${remaining < 0 ? styles.charOver : styles.charWarn}`}>
-                {remaining}
-              </span>
-            )}
-            <button className={styles.postBtn} onClick={handlePost} disabled={isEmpty || isOverLimit || submitting || uploading}>
-              {uploading ? "Uploading…" : submitting ? "Posting…" : "Post"}
-            </button>
-          </div>
-
+            <div className={styles.tools}>
+              <button className={styles.toolBtn} onClick={() => fileRef.current?.click()}>
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={1.75}>
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <path d="M21 15l-5-5L5 21" />
+                </svg>
+              </button>
+              <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={handleImage} />
+              <button className={styles.toolBtn} onClick={() => setShowEmoji((prev) => !prev)}>
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={1.75}>
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M8 13s1.5 2 4 2 4-2 4-2" />
+                  <line x1="9" y1="9" x2="9.01" y2="9" strokeWidth={3} strokeLinecap="round" />
+                  <line x1="15" y1="9" x2="15.01" y2="9" strokeWidth={3} strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+            <div className={styles.right2}>
+              {remaining < 20 && (
+                <span className={`${styles.charCount} ${remaining < 0 ? styles.charOver : styles.charWarn}`}>
+                  {remaining}
+                </span>
+              )}
+              <button className={styles.postBtn} onClick={handlePost} disabled={isEmpty || isOverLimit || submitting || uploading}>
+                {uploading ? "Uploading…" : submitting ? "Posting…" : "Post"}
+              </button>
+            </div>
         </div>
 
         {error && <p style={{ color: "#f4212e", fontSize: 14, marginTop: 8 }}>{error}</p>}

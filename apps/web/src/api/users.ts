@@ -1,39 +1,30 @@
-import {
-  GetUserCommand,
-  UpdateUserCommand,
-  FollowUserCommand,
-  UnfollowUserCommand,
-} from "@xcloud/sdk-client";
-import { twitterClient, toApiError, toUser } from "./twitter-client";
 import { apiFetch } from "./client";
 import type { User } from "../types";
 
-export async function getUser(handle: string): Promise<User> {
-  try {
-    return toUser(await twitterClient.send(new GetUserCommand({ handle })));
-  } catch (err) {
-    throw toApiError(err);
-  }
+export function getUser(handle: string): Promise<User> {
+  return apiFetch<User>(`/v1/users/${encodeURIComponent(handle)}`, { auth: false });
 }
 
-type RawUser = Parameters<typeof toUser>[0];
+export function getUserById(userId: string): Promise<User> {
+  return apiFetch<User>(`/v1/users/by-id/${encodeURIComponent(userId)}`);
+}
 
 /** Users that `userId` follows. Public, non-modeled route. */
 export async function getFollowing(userId: string): Promise<User[]> {
-  const res = await apiFetch<{ users: RawUser[] }>(
+  const res = await apiFetch<{ users: User[] }>(
     `/v1/users/${encodeURIComponent(userId)}/following`,
     { auth: false },
   );
-  return res.users.map(toUser);
+  return res.users;
 }
 
 /** Users that follow `userId`. Public, non-modeled route. */
 export async function getFollowers(userId: string): Promise<User[]> {
-  const res = await apiFetch<{ users: RawUser[] }>(
+  const res = await apiFetch<{ users: User[] }>(
     `/v1/users/${encodeURIComponent(userId)}/followers`,
     { auth: false },
   );
-  return res.users.map(toUser);
+  return res.users;
 }
 
 /** Of `userIds`, which the current viewer follows (for follow buttons). Authed, non-modeled. */
@@ -46,26 +37,14 @@ export async function getFollowingStatus(userIds: string[]): Promise<string[]> {
   return res.following;
 }
 
-export async function updateMe(input: { displayName?: string; bio?: string; avatarUrl?: string }): Promise<User> {
-  try {
-    return toUser(await twitterClient.send(new UpdateUserCommand(input)));
-  } catch (err) {
-    throw toApiError(err);
-  }
+export function updateMe(input: { displayName?: string; bio?: string; avatarUrl?: string; bannerUrl?: string }): Promise<User> {
+  return apiFetch<User>("/v1/users/me", { method: "PUT", body: input });
 }
 
-export async function followUser(userId: string): Promise<void> {
-  try {
-    await twitterClient.send(new FollowUserCommand({ userId }));
-  } catch (err) {
-    throw toApiError(err);
-  }
+export function followUser(userId: string): Promise<void> {
+  return apiFetch<void>(`/v1/users/${encodeURIComponent(userId)}/follow`, { method: "POST" });
 }
 
-export async function unfollowUser(userId: string): Promise<void> {
-  try {
-    await twitterClient.send(new UnfollowUserCommand({ userId }));
-  } catch (err) {
-    throw toApiError(err);
-  }
+export function unfollowUser(userId: string): Promise<void> {
+  return apiFetch<void>(`/v1/users/${encodeURIComponent(userId)}/follow`, { method: "DELETE" });
 }

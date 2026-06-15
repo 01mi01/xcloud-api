@@ -17,6 +17,7 @@ const mockTweet: Tweet = {
     replyToTweetId: null,
     likesCount:     0,
     retweetCount:   0,
+    repliesCount:   0,
     createdAt:      new Date().toISOString(),
 };
 

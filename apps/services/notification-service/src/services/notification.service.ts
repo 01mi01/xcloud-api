@@ -13,6 +13,21 @@ export interface FollowEvent {
     timestamp:   string;
 }
 
+export interface ReplyEvent {
+    replyTweetId:  string;  // el tweet de respuesta
+    parentTweetId: string;  // el tweet al que se respondió
+    userId:        string;  // quien respondió (actor)
+    targetUserId:  string;  // autor del tweet padre (destinatario)
+    timestamp:     string;
+}
+
+export interface MentionEvent {
+    tweetId:      string;   // el tweet donde ocurrió la mención
+    userId:       string;   // quien mencionó (actor)
+    targetUserId: string;   // el usuario mencionado (destinatario)
+    timestamp:    string;
+}
+
 /**
  * Procesa un evento de like.
  * Diseño técnico §4.3:
@@ -70,6 +85,38 @@ export const processFollowEvent = async (event: FollowEvent): Promise<void> => {
     );
 
     wsPublisher.pushToUser(event.followingId, notification);
+};
+
+/**
+ * Procesa un evento de reply.
+ */
+export const processReplyEvent = async (event: ReplyEvent): Promise<void> => {
+    if (event.userId === event.targetUserId) return; // no notificar self-reply
+
+    const notification = await repo.insert(
+        event.targetUserId,    // el autor del tweet padre recibe la notificación
+        event.userId,          // quien respondió es el actor
+        "reply",
+        event.parentTweetId    // el tweet al que respondieron
+    );
+
+    wsPublisher.pushToUser(event.targetUserId, notification);
+};
+
+/**
+ * Procesa un evento de mención (@handle en un tweet).
+ */
+export const processMentionEvent = async (event: MentionEvent): Promise<void> => {
+    if (event.userId === event.targetUserId) return; // no notificar auto-mención
+
+    const notification = await repo.insert(
+        event.targetUserId,  // el mencionado recibe la notificación
+        event.userId,        // quien lo mencionó es el actor
+        "mention",
+        event.tweetId
+    );
+
+    wsPublisher.pushToUser(event.targetUserId, notification);
 };
 
 /**

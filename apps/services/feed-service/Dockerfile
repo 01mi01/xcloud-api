@@ -11,6 +11,7 @@ COPY packages/sdk-server ./packages/sdk-server
 COPY apps/services/feed-service ./apps/services/feed-service
 RUN npm install --workspace=packages/shared --workspace=packages/sdk-server --workspace=apps/services/feed-service --include-workspace-root
 RUN npm run build --workspace=packages/shared
+RUN npm run build --workspace=packages/sdk-server
 RUN npm run build --workspace=apps/services/feed-service
 # Ensure service-local node_modules exists (holds non-hoisted deps like uuid).
 RUN mkdir -p apps/services/feed-service/node_modules
@@ -22,7 +23,11 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/services/feed-service/node_modules ./apps/services/feed-service/node_modules
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
+COPY --from=builder /app/packages/sdk-server/dist-cjs ./packages/sdk-server/dist-cjs
+COPY --from=builder /app/packages/sdk-server/dist-types ./packages/sdk-server/dist-types
+COPY --from=builder /app/packages/sdk-server/package.json ./packages/sdk-server/package.json
 COPY --from=builder /app/apps/services/feed-service/dist ./apps/services/feed-service/dist
 COPY --from=builder /app/apps/services/feed-service/package.json ./apps/services/feed-service/package.json
+COPY --from=builder /app/apps/services/feed-service/node_modules ./apps/services/feed-service/node_modules
 EXPOSE 3003
 CMD ["node", "apps/services/feed-service/dist/index.js"]

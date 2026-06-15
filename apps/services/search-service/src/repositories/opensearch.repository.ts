@@ -1,4 +1,4 @@
-import esClient, { TWEET_INDEX, USER_INDEX } from "../config/elasticsearch.config";
+import osClient, { TWEET_INDEX, USER_INDEX } from "../config/opensearch.config";
 
 export interface TweetDocument {
     tweetId:   string;
@@ -22,9 +22,9 @@ export interface UserDocument {
  * Ensure the tweets index exists with proper mapping.
  */
 export const ensureIndex = async (): Promise<void> => {
-    const { body: exists } = await esClient.indices.exists({ index: TWEET_INDEX });
+    const { body: exists } = await osClient.indices.exists({ index: TWEET_INDEX });
     if (!exists) {
-        await esClient.indices.create({
+        await osClient.indices.create({
             index: TWEET_INDEX,
             body: {
                 mappings: {
@@ -45,9 +45,9 @@ export const ensureIndex = async (): Promise<void> => {
  * Ensure the users index exists with proper mapping.
  */
 export const ensureUserIndex = async (): Promise<void> => {
-    const { body: exists } = await esClient.indices.exists({ index: USER_INDEX });
+    const { body: exists } = await osClient.indices.exists({ index: USER_INDEX });
     if (!exists) {
-        await esClient.indices.create({
+        await osClient.indices.create({
             index: USER_INDEX,
             body: {
                 mappings: {
@@ -72,7 +72,7 @@ export const ensureUserIndex = async (): Promise<void> => {
  * Index a tweet document for full-text search.
  */
 export const indexTweet = async (doc: TweetDocument): Promise<void> => {
-    await esClient.index({
+    await osClient.index({
         index: TWEET_INDEX,
         id:    doc.tweetId,
         body:  doc,
@@ -84,7 +84,7 @@ export const indexTweet = async (doc: TweetDocument): Promise<void> => {
  * overwrite the same document (idempotent upsert).
  */
 export const indexUser = async (doc: UserDocument): Promise<void> => {
-    await esClient.index({
+    await osClient.index({
         index: USER_INDEX,
         id:    doc.userId,
         body:  doc,
@@ -100,7 +100,7 @@ export const searchTweets = async (
     limit: number = 20,
     offset: number = 0
 ): Promise<{ results: TweetDocument[]; total: number }> => {
-    const response = await esClient.search({
+    const response = await osClient.search({
         index: TWEET_INDEX,
         body: {
             query: {
@@ -131,7 +131,7 @@ export const searchUsers = async (
     limit: number = 20,
     offset: number = 0
 ): Promise<{ results: UserDocument[]; total: number }> => {
-    const response = await esClient.search({
+    const response = await osClient.search({
         index: USER_INDEX,
         body: {
             query: {

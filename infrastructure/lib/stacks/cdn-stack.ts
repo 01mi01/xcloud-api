@@ -67,6 +67,7 @@ function handler(event) {
     });
 
     this.distribution = new cloudfront.Distribution(this, 'Distribution', {
+      // Default behavior — React SPA from S3 web bucket
       defaultBehavior: {
         origin:               new origins.S3Origin(webBucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -100,7 +101,7 @@ function handler(event) {
           ttl:                cdk.Duration.seconds(0),
         },
       ],
-      priceClass: cloudfront.PriceClass.PRICE_CLASS_100, // US + Europe only
+      priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
     });
 
     new cdk.CfnOutput(this, 'DistributionDomain', {

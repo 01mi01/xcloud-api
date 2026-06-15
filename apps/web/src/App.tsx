@@ -18,6 +18,13 @@ function FallbackRoute() {
   return <Navigate to={status === "authed" ? "/home" : "/login"} replace />;
 }
 
+function FollowingRedirect() {
+  const { identity, status } = useAuth();
+  if (status === "loading") return null;
+  if (!identity?.handle) return <Navigate to="/home" replace />;
+  return <Navigate to={`/profile/${identity.handle}/connections/following`} replace />;
+}
+
 function App() {
   return (
     <Routes>
@@ -65,6 +72,14 @@ function App() {
       />
       <Route
         path="/following"
+        element={
+          <ProtectedRoute>
+            <FollowingRedirect />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile/:handle/connections/:tab"
         element={
           <ProtectedRoute>
             <Following />

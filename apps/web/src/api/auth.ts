@@ -8,7 +8,7 @@ export interface LoginResponse {
 
 export interface RegisterResponse {
   userId: string;
-  message: string;
+  token: string;
 }
 
 export interface MeResponse {

@@ -14,6 +14,7 @@ export interface HydratedTweet {
     replyToTweetId: string | null;
     likesCount:     number;
     retweetCount:   number;
+    repliesCount:   number;
     createdAt:      string;
 }
 

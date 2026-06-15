@@ -11,6 +11,7 @@ COPY packages/sdk-server ./packages/sdk-server
 COPY apps/services/user-service ./apps/services/user-service
 RUN npm install --workspace=packages/shared --workspace=packages/sdk-server --workspace=apps/services/user-service --include-workspace-root
 RUN npm run build --workspace=packages/shared
+RUN npm run build --workspace=packages/sdk-server
 RUN npm run build --workspace=apps/services/user-service
 # Ensure service-local node_modules exists (holds non-hoisted deps like uuid).
 RUN mkdir -p apps/services/user-service/node_modules
@@ -28,5 +29,6 @@ COPY --from=builder /app/packages/sdk-server/dist-types ./packages/sdk-server/di
 COPY --from=builder /app/packages/sdk-server/package.json ./packages/sdk-server/package.json
 COPY --from=builder /app/apps/services/user-service/dist ./apps/services/user-service/dist
 COPY --from=builder /app/apps/services/user-service/package.json ./apps/services/user-service/package.json
+COPY --from=builder /app/apps/services/user-service/node_modules ./apps/services/user-service/node_modules
 EXPOSE 3001
 CMD ["node", "apps/services/user-service/dist/index.js"]

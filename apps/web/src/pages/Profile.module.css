@@ -78,7 +78,7 @@
 /* Edit / Follow buttons */
 .editBtn,
 .followBtn {
-  margin-top: 8px;
+  margin-top: 60px;
   padding: 8px 16px;
   border-radius: var(--radius-full);
   font-size: var(--font-size-sm);
@@ -169,6 +169,15 @@
 
 .statLabel {
   color: var(--color-text-secondary);
+}
+
+.statLink {
+  cursor: pointer;
+}
+
+.statLink:hover .statLabel,
+.statLink:hover strong {
+  text-decoration: underline;
 }
 
 /* Tabs */

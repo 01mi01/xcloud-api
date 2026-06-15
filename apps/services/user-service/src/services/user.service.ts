@@ -1,7 +1,8 @@
 import * as repo from "../repositories/user.repository";
 import { User } from "../models/user.model";
 import { UpdateFields } from "../repositories/user.repository";
-import { publishUserUpdated, publishUserFollowed } from "../events/user.producer";
+import { publishUserUpdated } from "../events/user.producer";
+import { publishUserFollowed } from "../events/follow.producer";
 
 export class UserNotFoundError extends Error {
     constructor(m: string) { super(m); this.name = "UserNotFoundError"; }
@@ -52,6 +53,14 @@ export const reindexAll = async (): Promise<number> => {
         await publishUserUpdated(user);
     }
     return users.length;
+};
+
+export const search = async (query: string): Promise<User[]> => {
+    return repo.search(query);
+};
+
+export const isFollowing = async (followerId: string, followingId: string): Promise<boolean> => {
+    return repo.followExists(followerId, followingId);
 };
 
 export const follow = async (followerId: string, followingId: string): Promise<void> => {

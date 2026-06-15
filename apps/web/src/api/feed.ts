@@ -1,5 +1,4 @@
-import { GetFeedCommand } from "@xcloud/sdk-client";
-import { twitterClient, toApiError, toRawTweet } from "./twitter-client";
+import { apiFetch } from "./client";
 import type { RawTweet } from "../types";
 
 export interface FeedResponse {
@@ -7,16 +6,11 @@ export interface FeedResponse {
   nextCursor: string | null;
 }
 
-export async function getFeed(opts: { cursor?: string; limit?: number } = {}): Promise<FeedResponse> {
-  try {
-    const out = await twitterClient.send(
-      new GetFeedCommand({ cursor: opts.cursor, limit: opts.limit }),
-    );
-    return {
-      tweets: (out.tweets ?? []).map(toRawTweet),
-      nextCursor: out.nextCursor ?? null,
-    };
-  } catch (err) {
-    throw toApiError(err);
-  }
+export function getFeed(opts: { cursor?: string; limit?: number } = {}): Promise<FeedResponse> {
+  return apiFetch<FeedResponse>("/v1/feed", {
+    query: {
+      ...(opts.cursor ? { cursor: opts.cursor } : {}),
+      ...(opts.limit  ? { limit:  opts.limit  } : {}),
+    },
+  });
 }

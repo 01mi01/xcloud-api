@@ -94,8 +94,8 @@ export const insert = async ({ tweetId, authorId, content, mediaUrls, replyToTwe
     const queries = [
         {
             query: `INSERT INTO tweets
-                        (tweet_id, author_id, content, media_urls, reply_to_tweet_id, likes_count, retweet_count, created_at)
-                    VALUES (?, ?, ?, ?, ?, 0, 0, ?)`,
+                        (tweet_id, author_id, content, media_urls, reply_to_tweet_id, likes_count, retweet_count, replies_count, created_at)
+                    VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?)`,
             params: [id, author, content, mediaUrls ?? [], replyParent, now],
         },
         {
@@ -116,6 +116,20 @@ export const insert = async ({ tweetId, authorId, content, mediaUrls, replyToTwe
     // Keyspaces rejects LOGGED batches (the driver default); these batches span
     // two partitions/tables, so UNLOGGED is correct (and works on local Cassandra too).
     await client.batch(queries, { prepare: true, logged: false });
+
+    // Si es un reply, incrementar replies_count en el tweet padre
+    if (replyToTweetId) {
+        const parentId = cassandra.types.Uuid.fromString(replyToTweetId);
+        const current = await client.execute(
+            "SELECT replies_count FROM tweets WHERE tweet_id = ?",
+            [parentId], { prepare: true }
+        );
+        const count = current.first()?.replies_count ?? 0;
+        await client.execute(
+            "UPDATE tweets SET replies_count = ? WHERE tweet_id = ?",
+            [count + 1, parentId], { prepare: true }
+        );
+    }
 
     const result = await client.execute(
         "SELECT * FROM tweets WHERE tweet_id = ?",
@@ -172,6 +186,20 @@ export const deleteLike = async (userId: string, tweetId: string): Promise<boole
     await client.execute("UPDATE tweets SET likes_count = ? WHERE tweet_id = ?", [Math.max(0, count - 1), tid], { prepare: true });
 
     return true;
+};
+
+export const findLikedByUser = async (userId: string): Promise<Tweet[]> => {
+    const rows = await client.execute(
+        "SELECT tweet_id, created_at FROM likes_by_user WHERE user_id = ?",
+        [cassandra.types.Uuid.fromString(userId)],
+        { prepare: true }
+    );
+    const tweets = await Promise.all(
+        rows.rows.map((r) => findById(r.tweet_id.toString()))
+    );
+    return tweets
+        .filter((t): t is Tweet => t !== null)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 };
 
 export const likeExists = async (userId: string, tweetId: string): Promise<boolean> => {

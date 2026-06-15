@@ -22,5 +22,6 @@ COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
 COPY --from=builder /app/apps/services/search-service/dist ./apps/services/search-service/dist
 COPY --from=builder /app/apps/services/search-service/package.json ./apps/services/search-service/package.json
+COPY --from=builder /app/apps/services/search-service/node_modules ./apps/services/search-service/node_modules
 EXPOSE 3005
 CMD ["node", "apps/services/search-service/dist/index.js"]

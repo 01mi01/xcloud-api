@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type ProxyOptions } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // Each backend microservice has its own port. The dev proxy below maps
@@ -20,7 +20,7 @@ const SERVICE_PORTS: Record<string, number> = {
 // Unset → local dev: each service proxied to its own localhost port.
 const API_TARGET = process.env.VITE_API_TARGET
 
-const proxy = Object.fromEntries(
+const proxy: Record<string, ProxyOptions> = Object.fromEntries(
   Object.entries(SERVICE_PORTS).map(([name, port]) => [
     `/api/v1/${name}`,
     {
@@ -33,6 +33,14 @@ const proxy = Object.fromEntries(
     },
   ]),
 )
+
+// Real-time notifications channel: proxy the WebSocket upgrade at /ws to the
+// notification-service so the SPA can use a same-origin ws:// URL.
+proxy['/ws'] = {
+  target: `ws://localhost:${SERVICE_PORTS.notifications}`,
+  ws:     true,
+  changeOrigin: true,
+}
 
 // https://vite.dev/config/
 export default defineConfig({

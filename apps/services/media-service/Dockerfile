@@ -22,5 +22,6 @@ COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
 COPY --from=builder /app/apps/services/media-service/dist ./apps/services/media-service/dist
 COPY --from=builder /app/apps/services/media-service/package.json ./apps/services/media-service/package.json
+COPY --from=builder /app/apps/services/media-service/node_modules ./apps/services/media-service/node_modules
 EXPOSE 3006
 CMD ["node", "apps/services/media-service/dist/index.js"]

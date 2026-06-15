@@ -59,28 +59,11 @@ export const update = async (userId: string, fields: UpdateFields): Promise<User
     return findById(userId);
 };
 
-// Users that `userId` follows.
-export const getFollowing = async (userId: string, limit = 100): Promise<User[]> => {
+export const search = async (query: string): Promise<User[]> => {
+    const q = `%${query.toLowerCase()}%`;
     const { rows } = await pool.query(
-        `${WITH_COUNTS}
-         JOIN follows f ON f.following_id = u.user_id
-         WHERE f.follower_id = $1
-         ORDER BY u.handle
-         LIMIT $2`,
-        [userId, limit]
-    );
-    return rows.map(fromRow);
-};
-
-// Users that follow `userId`.
-export const getFollowers = async (userId: string, limit = 100): Promise<User[]> => {
-    const { rows } = await pool.query(
-        `${WITH_COUNTS}
-         JOIN follows f ON f.follower_id = u.user_id
-         WHERE f.following_id = $1
-         ORDER BY u.handle
-         LIMIT $2`,
-        [userId, limit]
+        `${WITH_COUNTS} WHERE LOWER(u.handle) LIKE $1 OR LOWER(u.display_name) LIKE $1 ORDER BY u.display_name LIMIT 20`,
+        [q]
     );
     return rows.map(fromRow);
 };
@@ -116,4 +99,20 @@ export const followExists = async (followerId: string, followingId: string): Pro
         [followerId, followingId]
     );
     return rows.length > 0;
+};
+
+export const getFollowing = async (userId: string): Promise<User[]> => {
+    const { rows } = await pool.query(
+        `${WITH_COUNTS} INNER JOIN follows f ON u.user_id = f.following_id WHERE f.follower_id = $1 ORDER BY u.display_name`,
+        [userId]
+    );
+    return rows.map(fromRow);
+};
+
+export const getFollowers = async (userId: string): Promise<User[]> => {
+    const { rows } = await pool.query(
+        `${WITH_COUNTS} INNER JOIN follows f ON u.user_id = f.follower_id WHERE f.following_id = $1 ORDER BY u.display_name`,
+        [userId]
+    );
+    return rows.map(fromRow);
 };

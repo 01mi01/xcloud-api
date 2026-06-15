@@ -25,6 +25,7 @@ function Following() {
     location.pathname.endsWith("/followers") ? "followers" : "following",
   );
 
+  const [profileUser, setProfileUser] = useState<User | null>(null);
   const [following, setFollowingList] = useState<User[]>([]);
   const [followers, setFollowers] = useState<User[]>([]);
   const [followedSet, setFollowedSet] = useState<Set<string>>(new Set());
@@ -36,9 +37,10 @@ function Following() {
     setLoading(true);
     usersApi
       .getUser(targetHandle)
-      .then((u) =>
-        Promise.all([usersApi.getFollowing(u.userId), usersApi.getFollowers(u.userId)]),
-      )
+      .then((u) => {
+        if (!cancelled) setProfileUser(u);
+        return Promise.all([usersApi.getFollowing(u.userId), usersApi.getFollowers(u.userId)]);
+      })
       .then(async ([flw, fwr]) => {
         if (cancelled) return;
         setFollowingList(flw);
@@ -60,10 +62,15 @@ function Following() {
       <LeftSidebar />
 
       <main className={styles.feed}>
-        {/* Sticky top bar */}
+        {/* Top bar */}
         <div className={styles.topBar}>
+          <button className={styles.backBtn} onClick={() => navigate(-1)}>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path d="M19 12H5M12 5l-7 7 7 7" />
+            </svg>
+          </button>
           <div className={styles.topBarInfo}>
-            <span className={styles.displayName}>{targetHandle ?? ""}</span>
+            <span className={styles.displayName}>{profileUser?.displayName ?? targetHandle ?? ""}</span>
             <span className={styles.handle}>{targetHandle ? `@${targetHandle}` : ""}</span>
           </div>
         </div>
@@ -86,6 +93,7 @@ function Following() {
 
         {/* User list */}
         {loading && <p className={styles.empty}>Loading…</p>}
+
         {!loading && list.length === 0 && (
           <p className={styles.empty}>
             {activeTab === "following" ? "Not following anyone yet." : "No followers yet."}
@@ -93,25 +101,12 @@ function Following() {
         )}
 
         {!loading && list.map((user) => (
-          <div
+          <UserRow
             key={user.userId}
-            className={styles.userRow}
-            onClick={() => navigate(`/profile/${user.handle}`)}
-            style={{ cursor: "pointer" }}
-          >
-            <div className={styles.avatarCol}>
-              <Avatar size={48} src={user.avatarUrl || undefined} />
-            </div>
-            <div className={styles.userInfo}>
-              <span className={styles.name}>{user.displayName}</span>
-              <span className={styles.handle}>@{user.handle}</span>
-              {user.bio && <p className={styles.bio}>{user.bio}</p>}
-            </div>
-            {/* Don't show a follow button on your own row. */}
-            {user.userId !== identity?.userId && (
-              <FollowButton userId={user.userId} initialFollowing={followedSet.has(user.userId)} />
-            )}
-          </div>
+            user={user}
+            initialFollowing={followedSet.has(user.userId)}
+            onProfile={() => navigate(`/profile/${user.handle}`)}
+          />
         ))}
       </main>
 
@@ -121,37 +116,62 @@ function Following() {
 }
 
 // Real follow/unfollow toggle reflecting the viewer's actual state.
-function FollowButton({ userId, initialFollowing }: { userId: string; initialFollowing: boolean }) {
-  const [following, setFollowing] = useState(initialFollowing);
-  const [busy, setBusy] = useState(false);
+function UserRow({
+  user,
+  initialFollowing,
+  onProfile,
+}: {
+  user: User;
+  initialFollowing: boolean;
+  onProfile: () => void;
+}) {
+  const { identity } = useAuth();
+  const isOwnProfile = identity?.userId === user.userId;
+  const [isFollowing, setIsFollowing] = useState(initialFollowing);
+  const [loading, setLoading] = useState(false);
 
   // Re-sync if the resolved status arrives after first render.
-  useEffect(() => { setFollowing(initialFollowing); }, [initialFollowing]);
+  useEffect(() => { setIsFollowing(initialFollowing); }, [initialFollowing]);
 
-  const toggle = async (e: React.MouseEvent) => {
+  const handleToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (busy) return;
-    const was = following;
-    setFollowing(!was);
-    setBusy(true);
+    if (loading) return;
+    const was = isFollowing;
+    setIsFollowing(!was);
+    setLoading(true);
     try {
-      if (was) await usersApi.unfollowUser(userId);
-      else await usersApi.followUser(userId);
+      if (was) await usersApi.unfollowUser(user.userId);
+      else await usersApi.followUser(user.userId);
     } catch {
-      setFollowing(was);
+      // revert on error
+      setIsFollowing(was);
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
   };
 
   return (
-    <button
-      className={`${styles.followBtn} ${following ? styles.followingBtn : ""}`}
-      onClick={toggle}
-      disabled={busy}
-    >
-      {following ? "Following" : "Follow"}
-    </button>
+    <div className={styles.userRow}>
+      <div className={styles.avatarCol} onClick={onProfile} style={{ cursor: "pointer" }}>
+        <Avatar size={48} src={user.avatarUrl || undefined} />
+      </div>
+      <div className={styles.userInfo} onClick={onProfile} style={{ cursor: "pointer" }}>
+        <span className={styles.name}>{user.displayName}</span>
+        <span className={styles.handle}>@{user.handle}</span>
+        {user.bio && <p className={styles.bio}>{user.bio}</p>}
+      </div>
+      {!isOwnProfile && (
+        <button
+          className={`${styles.followBtn} ${isFollowing ? styles.followingBtn : ""}`}
+          onClick={handleToggle}
+          disabled={loading}
+          onMouseEnter={(e) => { if (isFollowing) (e.currentTarget as HTMLButtonElement).textContent = "Unfollow"; }}
+          onMouseLeave={(e) => { if (isFollowing) (e.currentTarget as HTMLButtonElement).textContent = "Following"; }}
+        >
+          {loading ? "…" : isFollowing ? "Following" : "Follow"}
+        </button>
+      )}
+    </div>
   );
 }
 

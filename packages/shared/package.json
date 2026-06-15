@@ -4,6 +4,7 @@
   "description": "Shared utilities, middleware, messaging, and types for xcloud services (dual ESM/CJS)",
   "exports": {
     ".": {
+      "types": "./dist/types/index.d.ts",
       "import": "./dist/esm/index.js",
       "require": "./dist/cjs/index.js"
     }

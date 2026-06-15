@@ -1,7 +1,27 @@
 import { v4 as uuidv4 } from "uuid";
 import * as repo from "../repositories/tweet.repository";
 import * as producer from "../events/tweet.producer";
+import { resolveHandleToUserId } from "../clients/user.client";
 import { Tweet } from "../models/tweet.model";
+
+// Extrae handles únicos mencionados en el contenido (@handle), sin la @.
+const extractMentions = (content: string): string[] => {
+    const matches = content.match(/@([A-Za-z0-9_]+)/g) ?? [];
+    return [...new Set(matches.map((m) => m.slice(1)))];
+};
+
+// Notifica (best-effort) a cada usuario mencionado en el tweet.
+const notifyMentions = async (tweet: Tweet, authorId: string): Promise<void> => {
+    const handles = extractMentions(tweet.content ?? "");
+    if (handles.length === 0) return;
+
+    await Promise.all(handles.map(async (handle) => {
+        const targetUserId = await resolveHandleToUserId(handle);
+        if (targetUserId && targetUserId !== authorId) {
+            await producer.publishTweetMentioned({ tweetId: tweet.tweetId!, userId: authorId, targetUserId });
+        }
+    }));
+};
 
 export class TweetNotFoundError extends Error {
     constructor(m: string) { super(m); this.name = "TweetNotFoundError"; }
@@ -37,6 +57,23 @@ export const createTweet = async (authorId: string, input: CreateTweetInput): Pr
         replyToTweetId: input.replyToTweetId,
     });
     await producer.publishTweetCreated(tweet);
+
+    // Notificar a los usuarios mencionados (@handle) en el contenido.
+    await notifyMentions(tweet, authorId);
+
+    // Si es un reply, notificar al autor del tweet padre (salvo self-reply).
+    if (input.replyToTweetId) {
+        const parent = await repo.findById(input.replyToTweetId);
+        if (parent && parent.authorId && parent.authorId !== authorId) {
+            await producer.publishTweetReplied({
+                replyTweetId:  tweet.tweetId!,
+                parentTweetId: input.replyToTweetId,
+                userId:        authorId,
+                targetUserId:  parent.authorId,
+            });
+        }
+    }
+
     return tweet;
 };
 

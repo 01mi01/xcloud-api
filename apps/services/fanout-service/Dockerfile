@@ -22,5 +22,6 @@ COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
 COPY --from=builder /app/apps/services/fanout-service/dist ./apps/services/fanout-service/dist
 COPY --from=builder /app/apps/services/fanout-service/package.json ./apps/services/fanout-service/package.json
+COPY --from=builder /app/apps/services/fanout-service/node_modules ./apps/services/fanout-service/node_modules
 EXPOSE 3007
 CMD ["node", "apps/services/fanout-service/dist/index.js"]

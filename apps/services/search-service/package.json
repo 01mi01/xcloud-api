@@ -8,7 +8,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "test": "jest --runInBand"
   },
-  "description": "Search Service — indexes tweets in Elasticsearch, serves full-text search",
+  "description": "Search Service — indexes tweets in OpenSearch, serves full-text search",
   "dependencies": {
     "@aws-sdk/credential-provider-node": "^3.658.0",
     "@opensearch-project/opensearch": "^2.13.0",

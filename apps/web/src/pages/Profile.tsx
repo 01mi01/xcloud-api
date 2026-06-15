@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import * as usersApi from "../api/users";
-import { getTweetsByAuthor, getLikedTweets } from "../api/tweets";
+import { getTweetsByAuthor, getLikedByUser } from "../api/tweets";
 import { hydrateTweets } from "../api/hydrate";
 import { ApiError } from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -66,8 +66,8 @@ function Profile() {
     // The user's own tweets (split into Posts/Replies/Media client-side) and the
     // tweets they liked (Likes tab) — fetched together.
     Promise.all([
-      getTweetsByAuthor(user.userId).then((raw) => hydrateTweets(raw, identity?.userId)),
-      getLikedTweets(user.userId).then((raw) => hydrateTweets(raw, identity?.userId)),
+      getTweetsByAuthor(user.userId).then(({ tweets: raw }) => hydrateTweets(raw, identity?.userId)),
+      getLikedByUser(user.userId).then(({ tweets: raw }) => hydrateTweets(raw, identity?.userId)),
     ])
       .then(([authored, liked]) => {
         if (cancelled) return;
@@ -105,8 +105,11 @@ function Profile() {
       }
       // Refresh auth context if it's our own follow graph
       await refresh();
-    } catch {
-      // silently ignore — the UI state will be inconsistent but not broken
+    } catch (err) {
+      // Si ya sigue (estado desincronizado), corregir el estado local
+      if (err instanceof ApiError && err.status === 409) {
+        setFollowing(true);
+      }
     } finally {
       setFollowLoading(false);
     }
@@ -158,7 +161,7 @@ function Profile() {
           <div className={styles.topBarInfo}>
             <span className={styles.topBarName}>{user.displayName}</span>
             <span className={styles.topBarCount}>
-              {user.followersCount.toLocaleString()} followers
+              {tweets.length.toLocaleString()} {activeTab === "posts" ? "posts" : "likes"}
             </span>
           </div>
         </div>
@@ -168,7 +171,7 @@ function Profile() {
 
         {/* Avatar row */}
         <div className={styles.avatarRow}>
-          <Avatar size={80} src={user.avatarUrl || undefined} />
+          <Avatar size={120} src={user.avatarUrl || undefined} />
           {isOwnProfile ? (
             <button
               className={styles.editBtn}
@@ -214,6 +217,7 @@ function Profile() {
           </div>
           <div className={styles.followStats}>
             <span
+              className={styles.statLink}
               onClick={() => navigate(`/profile/${user.handle}/following`)}
               style={{ cursor: "pointer" }}
             >
@@ -221,6 +225,7 @@ function Profile() {
               <span className={styles.statLabel}>Following</span>
             </span>
             <span
+              className={styles.statLink}
               onClick={() => navigate(`/profile/${user.handle}/followers`)}
               style={{ cursor: "pointer" }}
             >
@@ -264,6 +269,7 @@ function Profile() {
             onClose={() => setShowEditModal(false)}
             onSave={(updated) => {
               setUser((u) => (u ? { ...u, ...updated } : u));
+              setShowEditModal(false);
               // Refresh auth so the sidebar (own avatar/name) reflects the change.
               if (isOwnProfile) refresh().catch(() => {});
             }}

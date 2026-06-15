@@ -2,10 +2,12 @@ import { Request, Response } from "express";
 import { JwtPayload } from "jsonwebtoken";
 import { registerUser, loginUser, assignUserToGroup } from "../services/auth.service";
 
+// §3.1 — handle: 4-20 chars, only letters, numbers and underscore.
 // Matches the Smithy `Handle` contract (com.twitter#Handle) that user-service's
-// GetUser enforces via the SSDK. Validating here keeps registration in sync, so
-// a handle that can be created can always be fetched.
-const HANDLE_PATTERN = /^[a-zA-Z0-9_]{4,20}$/;
+// GetUser enforces via the SSDK, so a handle that can be created can always be fetched.
+const HANDLE_REGEX = /^[a-zA-Z0-9_]{4,20}$/;
+// Basic email shape check.
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const register = async (req: Request, res: Response): Promise<void> => {
     const { handle, email, password } = req.body as { handle?: string; email?: string; password?: string };
@@ -14,16 +16,23 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         res.status(400).json({ message: "handle, email and password are required" });
         return;
     }
-
-    if (!HANDLE_PATTERN.test(handle)) {
-        res.status(400).json({ message: "handle must be 4-20 characters: letters, numbers and underscore only" });
+    if (!HANDLE_REGEX.test(handle)) {
+        res.status(400).json({ message: "handle must be 4-20 chars, only letters, numbers and underscore" });
+        return;
+    }
+    if (!EMAIL_REGEX.test(email)) {
+        res.status(400).json({ message: "email format is invalid" });
+        return;
+    }
+    if (password.length < 8) {
+        res.status(400).json({ message: "password must be at least 8 characters" });
         return;
     }
 
     try {
-        const userId = await registerUser(handle, email, password);
+        const { userId, token } = await registerUser(handle, email, password);
         await assignUserToGroup(email, "user");
-        res.status(201).json({ userId, message: "User registered successfully" });
+        res.status(201).json({ userId, token });
     } catch (err) {
         if ((err as Error).name === "UsernameExistsException") {
             res.status(409).json({ message: "Email already registered" });

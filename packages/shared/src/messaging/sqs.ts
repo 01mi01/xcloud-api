@@ -30,6 +30,10 @@ const SQS_QUEUE_ENV: Partial<Record<EventName, string>> = {
   // 1:1 to search-service (the only consumer), for the user search index.
   'user.created': 'USER_CREATED_QUEUE_URL',
   'user.updated': 'USER_UPDATED_QUEUE_URL',
+  // tweet.retweeted is routed via SNS (SNS_TOPIC_ENV above) — it fans out to
+  // fanout + notification — so it is NOT listed here. reply/mention are 1:1.
+  'tweet.replied': 'REPLY_EVENT_QUEUE_URL',
+  'tweet.mentioned': 'MENTION_EVENT_QUEUE_URL',
 };
 
 /** Production publisher: SNS for fan-out events, SQS for 1:1 events. */

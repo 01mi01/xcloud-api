@@ -44,6 +44,7 @@ export class CognitoConstruct extends Construct {
     });
 
     // Resource server with custom scopes
+    // Cognito rejects URLs with :// as the name — use a simple identifier instead
     this.resourceServer = this.userPool.addResourceServer('ResourceServer', {
       // identifier may be a URL, but the NAME must match [\w\s+=,.@-]+ (no "://").
       // Without an explicit name CDK defaults it to the identifier → 400.
