@@ -5,15 +5,15 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"   # repo root (scripts/ lives one level down)
 INFRA="$ROOT/infrastructure"
 
-# Usage: ./destroy-beta.sh <profile>   e.g. ./destroy-beta.sh personal
+# Usage: ./scripts/destroy-beta.sh <profile>   e.g. ./scripts/destroy-beta.sh personal
 # Profile is REQUIRED so you tear down in the same account you deployed to.
 PROFILE="${1:-${AWS_PROFILE:-}}"
 if [ -z "$PROFILE" ]; then
   echo "ERROR: no AWS profile given."
-  echo "Usage: ./destroy-beta.sh <profile>"
+  echo "Usage: ./scripts/destroy-beta.sh <profile>"
   echo "Available profiles:"
   aws configure list-profiles 2>/dev/null | sed 's/^/  - /'
   exit 1

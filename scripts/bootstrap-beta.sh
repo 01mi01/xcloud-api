@@ -7,17 +7,18 @@
 #   Amazon Keyspaces (Cassandra): created here from your machine over the public
 #     Keyspaces endpoint (TLS + SigV4 with your AWS creds).
 #
-# Usage: ./bootstrap-beta.sh <profile>      e.g. ./bootstrap-beta.sh personal
-# Run AFTER ./deploy-beta.sh. Idempotent.
+# Usage: ./scripts/bootstrap-beta.sh <profile>      e.g. ./scripts/bootstrap-beta.sh personal
+# Run AFTER ./scripts/deploy-beta.sh. Idempotent.
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"   # repo root (scripts/ lives one level down)
+cd "$ROOT"
 
 PROFILE="${1:-${AWS_PROFILE:-}}"
 if [ -z "$PROFILE" ]; then
   echo "ERROR: no AWS profile given."
-  echo "Usage: ./bootstrap-beta.sh <profile>"
+  echo "Usage: ./scripts/bootstrap-beta.sh <profile>"
   aws configure list-profiles 2>/dev/null | sed 's/^/  - /'
   exit 1
 fi

@@ -8,7 +8,7 @@ functional, test, and tear it down. Targets the `personal` AWS profile.
 > React SPA on CloudFront. Getting there surfaced several **Amazon Keyspaces
 > incompatibilities** that the local self-managed Cassandra never shows — all
 > fixed and documented under "Keyspaces gotchas" below. The **local** stack
-> (`docker compose up -d` + `./start-dev.sh`) is still the fastest venue for
+> (`docker compose up -d` + `./scripts/start-dev.sh`) is still the fastest venue for
 > feature work; redeploy to verify cloud-specific behaviour.
 
 ## What beta includes / excludes
@@ -31,15 +31,15 @@ functional, test, and tear it down. Targets the `personal` AWS profile.
 
 ## 1. Deploy the infrastructure
 ```bash
-./deploy-beta.sh personal
+./scripts/deploy-beta.sh personal
 ```
 Bootstraps CDK if needed, **builds + pushes the service images to ECR**
-(`build-push-images.sh`, linux/arm64 for Graviton), then
+(`scripts/build-push-images.sh`, linux/arm64 for Graviton), then
 `cdk deploy --all --context env=beta`. Prints the ALB DNS name in the outputs.
 
 **Rebuilding one service after a fix** (don't rebuild all 7):
 ```bash
-IMAGES_CONFIRMED=1 SERVICES="tweet-service" ./build-push-images.sh personal
+IMAGES_CONFIRMED=1 SERVICES="tweet-service" ./scripts/build-push-images.sh personal
 # then force ECS to pull the new :latest image
 SVC=$(aws ecs list-services --cluster xcloud-beta --profile personal --region us-east-2 \
   --query "serviceArns[?contains(@,'TweetService')]" --output text | awk -F/ '{print $NF}')
@@ -55,7 +55,7 @@ aws ecs update-service --cluster xcloud-beta --service "$SVC" \
 - **Amazon Keyspaces (Cassandra):** create from your machine (public endpoint,
   TLS + SigV4):
   ```bash
-  ./bootstrap-beta.sh personal
+  ./scripts/bootstrap-beta.sh personal
   ```
   This runs `apps/services/tweet-service/scripts/bootstrap-keyspaces.ts`, creating
   the `xcloud` keyspace + tables and polling until they're `ACTIVE` (Keyspaces DDL
@@ -76,16 +76,16 @@ The SPA files are uploaded **via the CLI**, not CDK's `BucketDeployment` (its
 custom-resource Lambda bundles an awscli whose Python-union syntax crashes on
 CDK 2.150's runtime under this pinned/workspace setup). One command does it all:
 ```bash
-./deploy-web.sh personal      # build apps/web → s3 sync → CloudFront invalidation
+./scripts/deploy-web.sh personal      # build apps/web → s3 sync → CloudFront invalidation
 ```
 It reads `WebBucketName` / `DistributionId` / `DistributionDomain` from the `cdn`
 stack outputs. Open the printed `https://<id>.cloudfront.net`. First-time
 distribution rollout takes ~5–15 min (`aws cloudfront get-distribution --id <id>
 --query Distribution.Status` → `Deployed`). For later UI changes just re-run
-`./deploy-web.sh personal` (no `cdk` needed).
+`./scripts/deploy-web.sh personal` (no `cdk` needed).
 
 > Build the SPA with the **default** API base (`/api`) — i.e. plain
-> `npm run build -w apps/web`, which `deploy-web.sh` does. `VITE_API_TARGET` is
+> `npm run build -w apps/web`, which `scripts/deploy-web.sh` does. `VITE_API_TARGET` is
 > only for the **dev** proxy (running the SPA locally against the ALB); it has no
 > effect on a production build.
 
@@ -98,9 +98,9 @@ the timelines of the author's **followers** (you won't see your own posts in you
 
 ## 5. Watch cost / tear down
 ```bash
-./status-beta.sh personal     # read-only: what's running, am I being charged?
-./destroy-beta.sh personal    # delete everything (cdn + all stacks)
-./status-beta.sh personal     # confirm CLEAN
+./scripts/status-beta.sh personal     # read-only: what's running, am I being charged?
+./scripts/destroy-beta.sh personal    # delete everything (cdn + all stacks)
+./scripts/status-beta.sh personal     # confirm CLEAN
 ```
 Beta runs ~$0.15–0.20/hr of non-free-tier resources (NAT + Fargate + ALB) — from
 credits, ~$0 out of pocket. **Destroy when done** so it stops draining credits.
@@ -154,7 +154,7 @@ requests, not the elastic client. Key points (all in
 - **Gotchas hit on first deploy (fixed):** (1) OpenSearch single-node domains need
   **exactly one subnet** — the search stack pins `vpcSubnets` to `privateSubnets[0]`
   (selecting by subnet *type* returns one-per-AZ and fails with "specify exactly one
-  subnet"). (2) `search-service` is now in the **default `build-push-images.sh`
+  subnet"). (2) `search-service` is now in the **default `scripts/build-push-images.sh`
   list**, so "build all" pushes its image (a missing `:latest` → circuit breaker).
   (3) **403 on startup** (`Failed to create search indices: Response Error`): the
   task role granted only `ESHttpGet/Post/Put/Delete` but `indices.exists()` does a
@@ -216,7 +216,7 @@ publishes → fanout never runs → feed stays empty.
   mixed-content; a CloudFront **Function** strips the `/api` prefix. Only `403`
   is remapped to `index.html` (SPA deep links); `404` is left alone so real API
   404s pass through as JSON.
-- Upload is **CLI** (`deploy-web.sh`), not `BucketDeployment` — see step 3.
+- Upload is **CLI** (`scripts/deploy-web.sh`), not `BucketDeployment` — see step 3.
 - **WebSocket** (`/api/v1/notifications/ws`) rides the same `/api/*` behaviour
   (CloudFront tunnels WS to the ALB origin; the viewer-request function strips
   `/api` and the `?token=` query survives). Kept alive end-to-end by three

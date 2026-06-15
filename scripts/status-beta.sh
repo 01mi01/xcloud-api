@@ -4,14 +4,14 @@
 # (NAT Gateway, Fargate tasks, RDS, ALB, ElastiCache) that a failed/forgotten
 # teardown leaves behind.
 #
-# Usage: ./status-beta.sh <profile>   e.g. ./status-beta.sh personal
+# Usage: ./scripts/status-beta.sh <profile>   e.g. ./scripts/status-beta.sh personal
 
 set -uo pipefail
 
 PROFILE="${1:-${AWS_PROFILE:-}}"
 if [ -z "$PROFILE" ]; then
   echo "ERROR: no AWS profile given."
-  echo "Usage: ./status-beta.sh <profile>"
+  echo "Usage: ./scripts/status-beta.sh <profile>"
   echo "Available profiles:"
   aws configure list-profiles 2>/dev/null | sed 's/^/  - /'
   exit 1
@@ -103,6 +103,6 @@ if [ "$billable" -eq 0 ]; then
   echo "  ✅ CLEAN — no beta resources found. Not being charged."
 else
   echo "  ⚠️  RESOURCES LIVE — credits are draining."
-  echo "     Run ./destroy-beta.sh $PROFILE to tear down."
+  echo "     Run ./scripts/destroy-beta.sh $PROFILE to tear down."
 fi
 echo "=========================================================="

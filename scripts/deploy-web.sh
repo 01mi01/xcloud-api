@@ -7,21 +7,21 @@
 #   2. aws s3 sync apps/web/dist → s3://<WebBucketName> --delete
 #   3. aws cloudfront create-invalidation --paths "/*"
 #
-# Usage: ./deploy-web.sh <profile> [env]     e.g. ./deploy-web.sh personal beta
+# Usage: ./scripts/deploy-web.sh <profile> [env]     e.g. ./scripts/deploy-web.sh personal beta
 #
 # NOTE: this does NOT deploy infrastructure — run `cdk deploy xcloud-<env>-cdn`
 # first if the cdn stack doesn't exist yet. After that, this script is the whole
 # loop for UI changes (no cdk needed).
 
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"   # repo root (scripts/ lives one level down)
 cd "$ROOT"
 
 PROFILE="${1:-${AWS_PROFILE:-}}"
 ENV="${2:-beta}"
 if [ -z "$PROFILE" ]; then
   echo "ERROR: no AWS profile given."
-  echo "Usage: ./deploy-web.sh <profile> [env]"
+  echo "Usage: ./scripts/deploy-web.sh <profile> [env]"
   aws configure list-profiles 2>/dev/null | sed 's/^/  - /'
   exit 1
 fi

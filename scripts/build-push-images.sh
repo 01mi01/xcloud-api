@@ -6,16 +6,16 @@
 # Images are built for linux/arm64 — Fargate runs these on Graviton (the task
 # defs set runtimePlatform ARM64), so builds are native + fast on Apple Silicon.
 #
-# Usage: ./build-push-images.sh <profile>     e.g. ./build-push-images.sh personal
+# Usage: ./scripts/build-push-images.sh <profile>     e.g. ./scripts/build-push-images.sh personal
 
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"   # repo root (scripts/ lives one level down)
 cd "$ROOT"
 
 PROFILE="${1:-${AWS_PROFILE:-}}"
 if [ -z "$PROFILE" ]; then
   echo "ERROR: no AWS profile given."
-  echo "Usage: ./build-push-images.sh <profile>"
+  echo "Usage: ./scripts/build-push-images.sh <profile>"
   aws configure list-profiles 2>/dev/null | sed 's/^/  - /'
   exit 1
 fi

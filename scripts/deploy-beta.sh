@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 # Deploy the BETA stack to AWS (ECS Fargate + RDS + ElastiCache + SQS/SNS, no OpenSearch).
 # Beta is HTTP-only and ~$0.10/hr of non-free-tier cost (NAT Gateway + Fargate) — it draws
-# down your AWS credits while running. ALWAYS run ./destroy-beta.sh when you're done.
+# down your AWS credits while running. ALWAYS run ./scripts/destroy-beta.sh when you're done.
 #
 # Prereqs: AWS CLI configured (`aws configure`), Docker running (CDK builds service images).
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"   # repo root (scripts/ lives one level down)
 INFRA="$ROOT/infrastructure"
 
 # --- 0. Pick the AWS account (named profile) -------------------------------
-# Usage: ./deploy-beta.sh <profile>   e.g. ./deploy-beta.sh personal
+# Usage: ./scripts/deploy-beta.sh <profile>   e.g. ./scripts/deploy-beta.sh personal
 # You have multiple AWS accounts on this machine, so a profile is REQUIRED —
 # this is what stops you deploying to the wrong account.
 PROFILE="${1:-${AWS_PROFILE:-}}"
 if [ -z "$PROFILE" ]; then
   echo "ERROR: no AWS profile given."
-  echo "Usage: ./deploy-beta.sh <profile>"
+  echo "Usage: ./scripts/deploy-beta.sh <profile>"
   echo "Available profiles:"
   aws configure list-profiles 2>/dev/null | sed 's/^/  - /'
   exit 1
@@ -50,7 +50,7 @@ echo "  Region  : $REGION"
 echo "=========================================================="
 echo "  This creates billable resources (NAT Gateway, Fargate,"
 echo "  ALB, RDS, ElastiCache). ~\$11–15 of credits over 3 days."
-echo "  Run ./destroy-beta.sh as soon as you're done."
+echo "  Run ./scripts/destroy-beta.sh as soon as you're done."
 echo "=========================================================="
 read -r -p "Deploy to THIS account/region? (yes/no) " ANSWER
 [ "$ANSWER" = "yes" ] || { echo "Aborted."; exit 1; }
@@ -59,7 +59,7 @@ read -r -p "Deploy to THIS account/region? (yes/no) " ANSWER
 # The ECS tasks pull pre-built images from ECR; build/push them first (linux/amd64).
 echo ""
 echo "==> Building and pushing service images to ECR..."
-IMAGES_CONFIRMED=1 "$ROOT/build-push-images.sh" "$PROFILE"
+IMAGES_CONFIRMED=1 "$ROOT/scripts/build-push-images.sh" "$PROFILE"
 
 cd "$INFRA"
 
@@ -77,4 +77,4 @@ npx cdk deploy --all --context env=beta --require-approval never
 
 echo ""
 echo "Done. Beta is live. The ALB DNS name is in the stack outputs above."
-echo "REMEMBER: ./destroy-beta.sh when finished to stop the credit drain."
+echo "REMEMBER: ./scripts/destroy-beta.sh when finished to stop the credit drain."

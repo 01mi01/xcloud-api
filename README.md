@@ -121,7 +121,7 @@ npm run build -w packages/shared     # @xcloud/shared (lo consumen los servicios
 Arranca los 8 microservicios **y** el SPA desde **una sola terminal**:
 
 ```bash
-./start-dev.sh
+./scripts/start-dev.sh
 ```
 
 Cada proceso corre en segundo plano; los logs van a `logs/<servicio>.log`.
@@ -164,7 +164,7 @@ cd apps/services/search-service && npm run dev
 
 El SPA en `apps/web/` consume todos los servicios via un proxy de Vite (`/api/v1/<service>/*` → `http://localhost:<port>/v1/<service>/*`).
 
-> Si usaste `./start-dev.sh` (opción A), el SPA ya está corriendo en `:5173` — no hace falta este paso.
+> Si usaste `./scripts/start-dev.sh` (opción A), el SPA ya está corriendo en `:5173` — no hace falta este paso.
 
 ```bash
 cd apps/web && npm run dev
@@ -422,11 +422,11 @@ Para levantar y bajar el entorno beta con una sola orden cada uno (desde la raí
 correcta y no hay forma de desplegar en la equivocada:
 
 ```bash
-./deploy-beta.sh personal     # build+push imágenes a ECR + cdk deploy --all (env=beta)
-./bootstrap-beta.sh personal  # crea el schema de Amazon Keyspaces (Postgres se crea solo al arrancar)
-./deploy-web.sh personal      # build del SPA + s3 sync + invalidación de CloudFront
-./status-beta.sh personal     # READ-ONLY: ¿queda algo corriendo? ¿me están cobrando?
-./destroy-beta.sh personal    # cdk destroy --all (env=beta) — borra TODO
+./scripts/deploy-beta.sh personal     # build+push imágenes a ECR + cdk deploy --all (env=beta)
+./scripts/bootstrap-beta.sh personal  # crea el schema de Amazon Keyspaces (Postgres se crea solo al arrancar)
+./scripts/deploy-web.sh personal      # build del SPA + s3 sync + invalidación de CloudFront
+./scripts/status-beta.sh personal     # READ-ONLY: ¿queda algo corriendo? ¿me están cobrando?
+./scripts/destroy-beta.sh personal    # cdk destroy --all (env=beta) — borra TODO
 ```
 
 ✅ **Desplegado y funcionando end-to-end** (us-east-2): auth, tweets, perfiles,
@@ -437,12 +437,12 @@ el SSL de RDS y el guard FIFO de SNS, están en
 [docs/runbooks/aws-deploy.md](docs/runbooks/aws-deploy.md). Resumen del schema:
 **Postgres (RDS)** lo crean los servicios al arrancar (`ensurePostgresSchema`,
 porque RDS está en subredes privadas); **Cassandra (Keyspaces)** se crea con
-`./bootstrap-beta.sh` desde tu máquina (endpoint público, TLS + SigV4).
+`./scripts/bootstrap-beta.sh` desde tu máquina (endpoint público, TLS + SigV4).
 
 **Frontend en AWS:** el stack `cdn` (S3 privado + CloudFront) sirve el SPA en `/`
 y enruta `/api/*` al ALB como segundo origen (una CloudFront Function quita el
 prefijo `/api`) — así las llamadas del SPA son same-origin (sin CORS ni
-mixed-content). Los archivos se suben por CLI con `./deploy-web.sh` (no con
+mixed-content). Los archivos se suben por CLI con `./scripts/deploy-web.sh` (no con
 `BucketDeployment`).
 
 **Búsqueda en AWS:** beta tiene `enableSearch:true`, así que la búsqueda full-text
@@ -452,9 +452,9 @@ firma **SigV4** (rol de la task IAM) en producción — se cambió desde
 indexa eventos posteriores a su despliegue (no hay backfill). Detalle en
 [docs/runbooks/aws-deploy.md](docs/runbooks/aws-deploy.md).
 
-`status-beta.sh` no cambia nada: lista los stacks beta y cuenta los recursos
+`scripts/status-beta.sh` no cambia nada: lista los stacks beta y cuenta los recursos
 "always-on" facturables (NAT Gateway, tasks Fargate, RDS, ALB, ElastiCache) y
-dice `✅ CLEAN` o `⚠️ RESOURCES LIVE`. Úsalo después de `destroy-beta.sh` para
+dice `✅ CLEAN` o `⚠️ RESOURCES LIVE`. Úsalo después de `scripts/destroy-beta.sh` para
 confirmar que no quedó nada drenando créditos.
 
 Configura un perfil con nombre por cuenta una sola vez (evita usar `default`
@@ -474,7 +474,7 @@ Ambos scripts **imprimen el perfil + cuenta + región AWS y piden confirmación
 > Fargate + ALB, ~$0.10/hora). Esos cargos consumen tus **créditos AWS** (no
 > salen de tu bolsillo si tienes los ~$200 de crédito, pero sí los gastan, ~$11–15
 > por 3 días). RDS y ElastiCache t3.micro sí entran en el free tier de 12 meses.
-> **Ejecuta `./destroy-beta.sh` apenas termines la demo** para frenar el consumo.
+> **Ejecuta `./scripts/destroy-beta.sh` apenas termines la demo** para frenar el consumo.
 
 ## Estructura del proyecto
 
